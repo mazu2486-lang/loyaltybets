@@ -1,112 +1,68 @@
 """
 pick_engine.py
-Motor central de selección de picks.
-
-Criterio principal: EV positivo + edge >= 4% + prob >= 54%
-Fallback garantizado: si no llegan a 4 picks, completa con los mejores
-disponibles del día aunque no pasen el umbral (marcados 🟡).
-
-Mercados evaluados:
-- h2h (todos los deportes)
-- totals / Over-Under (futbol, basquet, mlb — NO tenis)
-
-Filtros: cuota 1.30–3.50, máximo 7 picks, exposición máx 8 unidades.
+Reglas:
+- UN solo pick por partido (el de mayor edge entre h2h y totals)
+- Para totals: solo el lado con mayor edge (Over OR Under, no ambos)
+- Mínimo 4 picks garantizados con fallback 🟡
 """
-from typing import List, Tuple, Optional
+from typing import List, Optional
 from models import PickOutput, EstadoBanca
 from bankroll import calcular_unidades, cargar_estado
 from data_fetcher import (
-    obtener_cuotas,
-    extraer_mejores_cuotas,
-    prob_implicita_sin_margen,
-    calcular_ev,
-    calcular_edge,
-    obtener_pitchers_probables_hoy,
-    score_pitcher,
-    verificar_load_management_nba,
-    DEPORTES_CON_TOTALS,
+    obtener_cuotas, extraer_mejores_cuotas,
+    prob_implicita_sin_margen, calcular_ev, calcular_edge,
+    obtener_pitchers_probables_hoy, score_pitcher,
+    verificar_load_management_nba, DEPORTES_CON_TOTALS,
 )
 
-CUOTA_MIN = 1.30
-CUOTA_MAX = 3.50
-EDGE_MIN  = 0.04
-PROB_MIN  = 0.54
-MIN_PICKS_DIA    = 4
-MAX_PICKS_DIA    = 7
-EXPOSICION_MAX   = 8.0
-
-# ─── SEMÁFORO ────────────────────────────────────────────────────────────────
+CUOTA_MIN      = 1.30
+CUOTA_MAX      = 3.50
+EDGE_MIN       = 0.04
+PROB_MIN       = 0.54
+MIN_PICKS      = 4
+MAX_PICKS      = 7
+EXPOSICION_MAX = 8.0
 
 def asignar_semaforo(edge: float) -> str:
-    if edge >= 0.08:
-        return "🟢"
-    elif edge >= 0.04:
-        return "🟡"
-    else:
-        return "🔴"   # solo en fallback
+    if edge >= 0.08:   return "🟢"
+    elif edge >= 0.04: return "🟡"
+    else:              return "🔴"
 
-# ─── AJUSTES POR DEPORTE ─────────────────────────────────────────────────────
+def ajustar_prob_mlb(prob, ps_home, ps_away, es_local):
+    ajuste = (ps_home - ps_away) * 0.07
+    return min(0.85, max(0.15, prob + ajuste if es_local else prob - ajuste))
 
-def ajustar_prob_mlb(prob_base: float, ps_home: float, ps_away: float, es_local: bool) -> float:
-    diferencial = ps_home - ps_away
-    ajuste = diferencial * 0.07
-    return min(0.85, max(0.15, prob_base + ajuste if es_local else prob_base - ajuste))
+def ajustar_prob_nba(prob, load_rival):
+    return min(0.85, prob + 0.04) if load_rival else prob
 
-def ajustar_prob_nba(prob_base: float, load_rival: bool) -> float:
-    return min(0.85, prob_base + 0.04) if load_rival else prob_base
-
-# ─── CANDIDATO INTERNO ───────────────────────────────────────────────────────
-
-def _build_pick(
-    deporte: str,
-    equipo_label: str,
-    tipo_apuesta: str,
-    cuota: float,
-    prob_modelo: float,
-    bookmaker: str,
-) -> Optional[PickOutput]:
-    """Construye un PickOutput si la cuota está en rango. Sin filtro de edge."""
+def _make_pick(deporte, liga, equipo, tipo, cuota, prob, bk) -> Optional[PickOutput]:
     if not (CUOTA_MIN <= cuota <= CUOTA_MAX):
         return None
-    ev    = calcular_ev(prob_modelo, cuota)
-    edge  = calcular_edge(prob_modelo, cuota)
+    edge = calcular_edge(prob, cuota)
     return PickOutput(
-        deporte=deporte,
-        liga=_get_liga(deporte),
-        equipo=equipo_label,
-        tipo_apuesta=tipo_apuesta,
-        cuota=cuota,
-        prob_modelo=round(prob_modelo, 4),
-        valor_esperado=round(ev, 4),
+        deporte=deporte, liga=liga, equipo=equipo, tipo_apuesta=tipo,
+        cuota=cuota, prob_modelo=round(prob, 4),
+        valor_esperado=round(calcular_ev(prob, cuota), 4),
         edge=round(edge, 4),
         semaforo=asignar_semaforo(edge),
-        unidades=0.0,   # se asigna después
-        bookmaker_ref=_normalizar_bookmaker(bookmaker),
+        unidades=0.0,
+        bookmaker_ref=_normalizar_bookmaker(bk),
     )
 
-def _cumple_umbral(pick: PickOutput) -> bool:
-    return pick.edge >= EDGE_MIN and pick.prob_modelo >= PROB_MIN
-
-# ─── EVALUADOR DE UN EVENTO ──────────────────────────────────────────────────
-
-def _evaluar_evento(
-    evento: dict,
-    deporte: str,
-    pitchers_hoy: dict,
-) -> List[PickOutput]:
+def _mejor_pick_evento(evento, deporte, pitchers) -> Optional[PickOutput]:
     """
-    Evalúa h2h + totals de un evento y devuelve todos los candidatos
-    (sin filtrar por umbral todavía — eso lo hace el generador principal).
+    Evalúa un evento y retorna UN SOLO pick — el de mayor edge.
+    Para totals solo considera el mejor lado (Over OR Under).
     """
     mejores = extraer_mejores_cuotas(evento)
     h2h    = mejores["h2h"]
     totals = mejores["totals"]
-
-    home = evento.get("home_team", "")
-    away = evento.get("away_team", "")
+    home   = evento.get("home_team", "")
+    away   = evento.get("away_team", "")
+    liga   = evento.get("_liga_nombre", _get_liga(deporte))
     candidatos: List[PickOutput] = []
 
-    # ── Probabilidades h2h ──────────────────────────────────────────────────
+    # ── h2h: evaluar local y visitante ──────────────────────────────────────
     cuota_h = h2h.get(home)
     cuota_a = h2h.get(away)
     cuota_d = h2h.get("Draw")
@@ -115,14 +71,11 @@ def _evaluar_evento(
         cuota_hv, bk_h = cuota_h
         cuota_av, bk_a = cuota_a
         cuota_dv = cuota_d[0] if cuota_d else None
-
         probs = prob_implicita_sin_margen(cuota_hv, cuota_av, cuota_dv)
-        prob_home = probs["local"]
-        prob_away = probs["visitante"]
+        prob_home, prob_away = probs["local"], probs["visitante"]
 
-        # Ajustes por deporte
         if deporte == "mlb":
-            for gid, data in pitchers_hoy.items():
+            for gid, data in pitchers.items():
                 if home in (data.get("home_team") or ""):
                     ps_h = score_pitcher(data.get("home"))
                     ps_a = score_pitcher(data.get("away"))
@@ -133,58 +86,79 @@ def _evaluar_evento(
             prob_home = ajustar_prob_nba(prob_home, verificar_load_management_nba(away))
             prob_away = ajustar_prob_nba(prob_away, verificar_load_management_nba(home))
 
-        p = _build_pick(deporte, home, "Victoria Local", cuota_hv, prob_home, bk_h)
+        # Nombre correcto: equipo local es local, visitante es visitante
+        p = _make_pick(deporte, liga, home, "Victoria Local",     cuota_hv, prob_home, bk_h)
+        if p: candidatos.append(p)
+        p = _make_pick(deporte, liga, away, "Victoria Visitante", cuota_av, prob_away, bk_a)
         if p: candidatos.append(p)
 
-        p = _build_pick(deporte, away, "Victoria Visitante", cuota_av, prob_away, bk_a)
-        if p: candidatos.append(p)
-
-    # ── Totals (Over/Under) — solo deportes habilitados ─────────────────────
+    # ── totals: solo el mejor lado por línea de puntos ──────────────────────
     if deporte in DEPORTES_CON_TOTALS:
+        # Agrupar por punto (ej. 7.5) y elegir solo Over o Under, el de mayor edge
+        puntos_vistos = set()
         for label, (cuota_t, bk_t) in totals.items():
-            # prob implícita del total (mercado binario: Over vs Under complementario)
-            # buscamos el par complementario
-            direction, punto = label.split(" ", 1)
-            opuesto = f"{'Under' if direction == 'Over' else 'Over'} {punto}"
-            cuota_op_data = totals.get(opuesto)
+            parts = label.split(" ", 1)
+            if len(parts) != 2:
+                continue
+            direction, punto = parts
+            if punto in puntos_vistos:
+                continue  # ya procesamos este punto
+            
+            over_label  = f"Over {punto}"
+            under_label = f"Under {punto}"
+            cuota_over  = totals.get(over_label)
+            cuota_under = totals.get(under_label)
 
-            if cuota_op_data:
-                cuota_op, _ = cuota_op_data
-                probs_t = prob_implicita_sin_margen(cuota_t, cuota_op)
-                prob_t  = probs_t["local"]   # prob del outcome evaluado
-            else:
-                # Si no hay el par, usar prob implícita cruda (menos preciso)
-                prob_t = 1 / cuota_t
+            if not cuota_over or not cuota_under:
+                continue
 
-            equipo_label = f"{home} vs {away}"
-            p = _build_pick(deporte, equipo_label, label, cuota_t, prob_t, bk_t)
-            if p: candidatos.append(p)
+            cuota_ov, bk_ov = cuota_over
+            cuota_uv, bk_uv = cuota_under
+            probs_t = prob_implicita_sin_margen(cuota_ov, cuota_uv)
+            prob_over  = probs_t["local"]
+            prob_under = probs_t["visitante"]
 
-    return candidatos
+            partido = f"{home} vs {away}"
+            p_over  = _make_pick(deporte, liga, partido, f"Over {punto}",  cuota_ov, prob_over,  bk_ov)
+            p_under = _make_pick(deporte, liga, partido, f"Under {punto}", cuota_uv, prob_under, bk_uv)
 
-# ─── GENERADOR PRINCIPAL ─────────────────────────────────────────────────────
+            # Solo agregar el mejor de los dos
+            mejor_total = None
+            if p_over and p_under:
+                mejor_total = p_over if p_over.edge >= p_under.edge else p_under
+            elif p_over:
+                mejor_total = p_over
+            elif p_under:
+                mejor_total = p_under
+
+            if mejor_total:
+                candidatos.append(mejor_total)
+            puntos_vistos.add(punto)
+
+    if not candidatos:
+        return None
+
+    # Retornar solo el pick de mayor edge del evento
+    return max(candidatos, key=lambda p: p.edge)
+
 
 def generar_picks(deporte: str) -> List[PickOutput]:
-    estado     = cargar_estado()
-    eventos    = obtener_cuotas(deporte)
-    pitchers   = obtener_pitchers_probables_hoy() if deporte == "mlb" else {}
+    estado   = cargar_estado()
+    eventos  = obtener_cuotas(deporte)
+    pitchers = obtener_pitchers_probables_hoy() if deporte == "mlb" else {}
 
-    todos_candidatos: List[PickOutput] = []
-    for evento in eventos:
-        todos_candidatos.extend(_evaluar_evento(evento, deporte, pitchers))
+    candidatos = [_mejor_pick_evento(e, deporte, pitchers) for e in eventos]
+    candidatos = [p for p in candidatos if p is not None]
+    candidatos.sort(key=lambda p: p.edge, reverse=True)
 
-    # Ordenar por edge desc
-    todos_candidatos.sort(key=lambda p: p.edge, reverse=True)
-
-    # ── Selección principal: picks que cumplen umbral ──
-    picks_validos  = [p for p in todos_candidatos if _cumple_umbral(p)]
-    picks_fallback = [p for p in todos_candidatos if not _cumple_umbral(p)]
+    validos   = [p for p in candidatos if p.edge >= EDGE_MIN and p.prob_modelo >= PROB_MIN]
+    fallbacks = [p for p in candidatos if p not in validos]
 
     seleccionados: List[PickOutput] = []
     exposicion = 0.0
 
-    for pick in picks_validos:
-        if len(seleccionados) >= MAX_PICKS_DIA or exposicion >= EXPOSICION_MAX:
+    for pick in validos:
+        if len(seleccionados) >= MAX_PICKS or exposicion >= EXPOSICION_MAX:
             break
         u = calcular_unidades(pick.edge, estado)
         if u > 0 and (exposicion + u) <= EXPOSICION_MAX:
@@ -192,27 +166,24 @@ def generar_picks(deporte: str) -> List[PickOutput]:
             seleccionados.append(pick)
             exposicion += u
 
-    # ── Fallback: completar hasta MIN_PICKS_DIA si faltan ──
-    if len(seleccionados) < MIN_PICKS_DIA:
-        for pick in picks_fallback:
-            if len(seleccionados) >= MIN_PICKS_DIA:
-                break
-            if exposicion >= EXPOSICION_MAX:
-                break
-            # En fallback: 0.5 unidades fijas, semáforo forzado a 🟡
-            pick.unidades  = 0.5
-            pick.semaforo  = "🟡"
-            seleccionados.append(pick)
-            exposicion += 0.5
+    for pick in fallbacks:
+        if len(seleccionados) >= MIN_PICKS:
+            break
+        pick.unidades = 0.5
+        pick.semaforo = "🟡"
+        seleccionados.append(pick)
 
     return seleccionados
 
-# ─── Helpers ─────────────────────────────────────────────────────────────────
 
 def _get_liga(deporte: str) -> str:
-    return {"futbol": "Premier League", "basquet": "NBA", "tenis": "ATP", "mlb": "MLB"}.get(deporte, deporte.upper())
+    return {"basquet": "NBA", "tenis": "ATP", "mlb": "MLB"}.get(deporte, deporte.upper())
 
 def _normalizar_bookmaker(key: str) -> str:
-    m = {"betsson":"Betsson","betano":"Betano","coolbet":"Coolbet",
-         "unibet":"Unibet","betfair_ex_eu":"Betfair","1xbet":"1xBet","pinnacle":"Pinnacle"}
+    m = {
+        "betsson":"Betsson","betano":"Betano","coolbet":"Coolbet","unibet":"Unibet",
+        "betfair_ex_eu":"Betfair","williamhill":"William Hill","draftkings":"DraftKings",
+        "fanduel":"FanDuel","gtbets":"GTbets","onexbet":"1xBet","pinnacle":"Pinnacle",
+        "betrivers":"BetRivers","bovada":"Bovada","mybookieag":"MyBookie",
+    }
     return m.get(key.lower(), key.capitalize())
