@@ -1,12 +1,3 @@
-"""
-combinada.py
-Arma la combinada (parlay) diaria con 3–4 picks.
-Reglas:
-- Solo picks 🟢 o 🟡
-- Cuota combinada resultante en rango razonable (máx ~15x)
-- No se arma en modo defensa ni crítico
-- Se apuesta en UN SOLO bookmaker (el más común entre los picks seleccionados)
-"""
 from typing import List, Optional
 from models import PickOutput, Combinada, EstadoBanca
 from collections import Counter
