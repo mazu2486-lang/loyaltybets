@@ -1,7 +1,8 @@
-from pydantic import BaseModel
-from typing import Literal, Optional, List
+from dataclasses import dataclass, field, asdict
+from typing import Literal, List
 
-class PickOutput(BaseModel):
+@dataclass
+class PickOutput:
     deporte: str
     liga: str
     equipo: str
@@ -10,17 +11,28 @@ class PickOutput(BaseModel):
     prob_modelo: float
     valor_esperado: float
     edge: float
-    semaforo: Literal["🟢", "🟡", "🔴"]
+    semaforo: str  # "🟢", "🟡", "🔴"
     unidades: float
     bookmaker_ref: str
 
-class Combinada(BaseModel):
+    def dict(self):
+        return asdict(self)
+
+@dataclass
+class Combinada:
     picks: List[PickOutput]
     cuota_combinada: float
     unidades: float
     bookmaker_ref: str
 
-class EstadoBanca(BaseModel):
-    modo: Literal["normal", "defensa", "critico"]
+    def dict(self):
+        return asdict(self)
+
+@dataclass
+class EstadoBanca:
+    modo: str  # "normal", "defensa", "critico"
     perdidas_consecutivas: int
     unidad_base: float
+
+    def dict(self):
+        return asdict(self)
