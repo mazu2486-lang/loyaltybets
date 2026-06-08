@@ -1,4 +1,5 @@
-import json, os
+import json
+import os
 from models import EstadoBanca
 
 ESTADO_PATH = os.getenv("BANKROLL_STATE_PATH", "/tmp/bankroll_state.json")
@@ -46,12 +47,4 @@ def calcular_unidades(edge: float, estado: EstadoBanca) -> float:
         raw = 3.0
     elif edge >= 0.07:
         raw = 2.0
-    elif edge >= 0.04:
-        raw = 1.0
-    else:
-        raw = 0.0
-    if estado.modo == "critico":
-        return min(raw, 0.5)
-    elif estado.modo == "defensa":
-        return min(raw, 1.0)
-    return raw
+    elif
