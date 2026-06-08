@@ -21,15 +21,27 @@ def _texto_modo(estado: EstadoBanca) -> str:
         return "🛑 _Modo Crítico — stakes mínimos_\n\n"
     return ""
 
+def parse_equipos(equipo_str: str):
+    if " vs " in equipo_str:
+        return equipo_str.split(" vs ")
+    return (equipo_str, "")
+
 def formatear_pick(pick: PickOutput, numero: int) -> str:
-    icono = _icono_deporte(pick.deporte)
+    icono = {"futbol":"⚽","basquet":"🏀","mlb":"⚾","tenis":"🎾"}.get(pick.deporte, "🎯")
+    equipo_local, equipo_visitante = parse_equipos(pick.equipo)
+    pick_linea = ""
+
+    if "Under" in pick.tipo_apuesta or "Over" in pick.tipo_apuesta:
+        pick_linea = f"Total: **{pick.tipo_apuesta}**"
+    else:
+        pick_linea = f"Ganador: **{pick.tipo_apuesta}**"
+
     return (
-        f"{pick.semaforo} *PICK #{numero} — {pick.liga}*\n"
-        f"{icono} {pick.equipo}\n"
-        f"📌 {pick.tipo_apuesta}\n"
+        f"{pick.semaforo} PICK #{numero} - {pick.liga}\n"
+        f"{icono} {equipo_local} vs {equipo_visitante}\n"
+        f"📌 {pick_linea}\n"
         f"💰 Cuota: *{pick.cuota}*\n"
         f"📊 Unidades: *{pick.unidades}u*\n"
-        f"🏦 Bookmaker: {pick.bookmaker_ref}\n"
     )
 
 def formatear_combinada(combinada: Combinada) -> str:
@@ -40,7 +52,6 @@ def formatear_combinada(combinada: Combinada) -> str:
         f"📋 {equipos}\n"
         f"💰 Cuota combinada: *{combinada.cuota_combinada}*\n"
         f"📊 Unidades: *{combinada.unidades}u*\n"
-        f"🏦 Bookmaker: {combinada.bookmaker_ref}\n"
         f"─────────────────────\n"
         f"⚠️ _Apuesta responsable. Combinadas son alto riesgo._"
     )
