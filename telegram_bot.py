@@ -1,7 +1,3 @@
-"""
-telegram_bot.py
-Compatible con python-telegram-bot v20+ (async).
-"""
 import os
 import asyncio
 from telegram import Bot
@@ -64,8 +60,6 @@ def formatear_resumen_semanal(picks_totales, picks_ganados, unidades_resultado, 
         f"_Resultados reales. Sin trampa, sin filtros._"
     )
 
-# ─── Envío async ─────────────────────────────────────────────────────────────
-
 async def _enviar_async(texto: str):
     bot = Bot(token=TOKEN)
     async with bot:
@@ -82,8 +76,6 @@ def enviar_mensaje(texto: str) -> bool:
         print(f"[Telegram] Error inesperado: {e}")
         return False
 
-# ─── Flujo de publicación ─────────────────────────────────────────────────────
-
 def enviar_picks_canal(
     picks: List[PickOutput],
     combinada: Optional[Combinada],
@@ -97,7 +89,6 @@ def enviar_picks_canal(
         )
         return
 
-    # Header
     icono = _icono_deporte(deporte)
     enviar_mensaje(
         f"{icono} *PICKS DEL DÍA — {_get_liga(deporte).upper()}*\n"
