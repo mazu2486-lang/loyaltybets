@@ -1,9 +1,6 @@
-"""
-main.py - LoyaltyBet Pick Engine v2.0
-"""
-from fastapi import FastAPI
+from fastapi import FastAPI, Query
 from fastapi.responses import JSONResponse
-from typing import Literal
+from typing import Literal, Optional
 from models import EstadoBanca
 from pick_engine import generar_picks
 from combinada import armar_combinada
@@ -24,7 +21,7 @@ def preview_picks(deporte: Deporte):
     picks = generar_picks(deporte)
     return JSONResponse([p.dict() for p in picks])
 
-@app.get("/picks/{deporte}")
+@app.get("/picks/{deporte}/publicar")
 def publicar_picks(deporte: Deporte):
     estado = cargar_estado()
     picks = generar_picks(deporte)
@@ -48,10 +45,10 @@ def reset_bankroll():
 
 @app.post("/resumen/semanal")
 def publicar_resumen(
-    picks_totales: int,
-    picks_ganados: int,
-    unidades_resultado: float,
-    racha: int,
+    picks_totales: int = Query(..., description="Número total de picks"),
+    picks_ganados: int = Query(..., description="Número de picks ganados"),
+    unidades_resultado: float = Query(..., description="Resultado en unidades"),
+    racha: int = Query(..., description="Racha actual"),
 ):
     enviar_resumen_semanal(picks_totales, picks_ganados, unidades_resultado, racha)
     return {"publicado": True}
