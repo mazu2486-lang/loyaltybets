@@ -5,14 +5,14 @@ from telegram.error import TelegramError
 from models import PickOutput, Combinada, EstadoBanca
 from typing import List, Optional
 
-TOKEN   = os.getenv("TELEGRAM_BOT_TOKEN", "")
-CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "")
+TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
 def _icono_deporte(deporte: str) -> str:
-    return {"futbol":"⚽","basquet":"🏀","mlb":"⚾","tenis":"🎾"}.get(deporte, "🎯")
+    return {"futbol": "⚽", "basquet": "🏀", "mlb": "⚾", "tenis": "🎾"}.get(deporte, "🎯")
 
 def _get_liga(deporte: str) -> str:
-    return {"futbol":"Premier League","basquet":"NBA","tenis":"ATP","mlb":"MLB"}.get(deporte, deporte.upper())
+    return {"futbol": "Premier League", "basquet": "NBA", "tenis": "ATP", "mlb": "MLB"}.get(deporte, deporte.upper())
 
 def _texto_modo(estado: EstadoBanca) -> str:
     if estado.modo == "defensa":
@@ -27,7 +27,7 @@ def parse_equipos(equipo_str: str):
     return (equipo_str, "")
 
 def formatear_pick(pick: PickOutput, numero: int) -> str:
-    icono = {"futbol":"⚽","basquet":"🏀","mlb":"⚾","tenis":"🎾"}.get(pick.deporte, "🎯")
+    icono = _icono_deporte(pick.deporte)
     equipo_local, equipo_visitante = parse_equipos(pick.equipo)
     pick_linea = ""
 
