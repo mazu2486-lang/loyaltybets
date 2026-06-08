@@ -63,7 +63,7 @@ def publicar_picks(deporte: Deporte):
     return {
         "publicado": True,
         "picks_generados": len(picks),
-        "combinada": combinada.dict() if combinada else None,
+        "combinada": combinada.model_dump() if combinada else None,
         "modo_banca": estado.modo,
     }
 

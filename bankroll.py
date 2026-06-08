@@ -24,7 +24,7 @@ def cargar_estado() -> EstadoBanca:
 
 def guardar_estado(estado: EstadoBanca):
     with open(ESTADO_PATH, "w") as f:
-        json.dump(estado.dict(), f)
+        json.dump(estado.model_dump(), f)
 
 def actualizar_resultado(gano: bool) -> EstadoBanca:
     """Llamar después de cada resultado conocido."""
