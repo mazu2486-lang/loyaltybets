@@ -1,6 +1,5 @@
-from dataclasses import dataclass, field, asdict
+from dataclasses import dataclass, asdict
 from typing import Literal, List
-
 @dataclass
 class PickOutput:
     deporte: str
@@ -14,25 +13,20 @@ class PickOutput:
     semaforo: str  # "🟢", "🟡", "🔴"
     unidades: float
     bookmaker_ref: str
-
     def dict(self):
         return asdict(self)
-
 @dataclass
 class Combinada:
     picks: List[PickOutput]
     cuota_combinada: float
     unidades: float
     bookmaker_ref: str
-
     def dict(self):
         return asdict(self)
-
 @dataclass
 class EstadoBanca:
     modo: str  # "normal", "defensa", "critico"
     perdidas_consecutivas: int
     unidad_base: float
-
     def dict(self):
         return asdict(self)
