@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import Literal, Optional
+from typing import Literal, Optional, List
 
 class PickOutput(BaseModel):
     deporte: str
@@ -15,7 +15,7 @@ class PickOutput(BaseModel):
     bookmaker_ref: str         # bookmaker recomendado
 
 class Combinada(BaseModel):
-    picks: list[PickOutput]
+    picks: List[PickOutput]
     cuota_combinada: float
     unidades: float
     bookmaker_ref: str
