@@ -1,43 +1,99 @@
-from typing import List, Optional
+from typing import List
 from models import PickOutput, Combinada, EstadoBanca
 from collections import Counter
 
-MIN_PICKS_COMBINADA = 3
-MAX_PICKS_COMBINADA = 4
-CUOTA_COMBINADA_MAX = 15.0
-UNIDADES_COMBINADA = 0.5   # siempre fija, conservadora
+CUOTA_EXPRESS_MAX = 6.0
+CUOTA_NORMAL_MAX = 12.0
+CUOTA_ACUMULADA_MAX = 20.0
 
-def armar_combinada(picks: List[PickOutput], estado: EstadoBanca) -> Optional[Combinada]:
-    if estado.modo in ("defensa", "critico"):
-        return None
 
-    candidatos = [p for p in picks if p.semaforo in ("🟢", "🟡")]
+def _picks_independientes(candidatos: List[PickOutput], n: int) -> List[PickOutput]:
+    """Selecciona n picks priorizando deportes distintos para mayor independencia."""
+    seleccionados: List[PickOutput] = []
+    deportes_usados: set = set()
 
-    if len(candidatos) < MIN_PICKS_COMBINADA:
-        return None
+    for pick in candidatos:
+        if len(seleccionados) >= n:
+            break
+        if pick.deporte not in deportes_usados:
+            seleccionados.append(pick)
+            deportes_usados.add(pick.deporte)
 
-    seleccionados = sorted(candidatos, key=lambda p: p.edge, reverse=True)[:MAX_PICKS_COMBINADA]
+    for pick in candidatos:
+        if len(seleccionados) >= n:
+            break
+        if pick not in seleccionados:
+            seleccionados.append(pick)
 
-    cuota_combinada = 1.0
-    for p in seleccionados:
-        cuota_combinada *= p.cuota
-    cuota_combinada = round(cuota_combinada, 2)
+    return seleccionados
 
-    if cuota_combinada > CUOTA_COMBINADA_MAX:
-        seleccionados = seleccionados[:3]
-        cuota_combinada = round(
-            seleccionados[0].cuota * seleccionados[1].cuota * seleccionados[2].cuota, 2
-        )
 
-    if cuota_combinada > CUOTA_COMBINADA_MAX:
-        return None
+def _cuota_combinada(picks: List[PickOutput]) -> float:
+    result = 1.0
+    for p in picks:
+        result *= p.cuota
+    return round(result, 2)
 
-    bk_counter = Counter(p.bookmaker_ref for p in seleccionados)
-    bookmaker_combinada = bk_counter.most_common(1)[0][0]
 
-    return Combinada(
-        picks=seleccionados,
-        cuota_combinada=cuota_combinada,
-        unidades=UNIDADES_COMBINADA,
-        bookmaker_ref=bookmaker_combinada,
+def _bookmaker_principal(picks: List[PickOutput]) -> str:
+    return Counter(p.bookmaker_ref for p in picks).most_common(1)[0][0]
+
+
+def armar_combinadas(picks: List[PickOutput], estado: EstadoBanca) -> List[Combinada]:
+    if estado.modo == "critico":
+        return []
+
+    combinadas: List[Combinada] = []
+    verdes = sorted(
+        [p for p in picks if p.semaforo == "🟢"],
+        key=lambda p: p.edge, reverse=True,
     )
+    buenos = sorted(
+        [p for p in picks if p.semaforo in ("🟢", "🟡")],
+        key=lambda p: p.edge, reverse=True,
+    )
+
+    # Express: 2 picks 🟢 — disponible en normal y defensa
+    if len(verdes) >= 2:
+        sel = _picks_independientes(verdes, 2)
+        cuota = _cuota_combinada(sel)
+        if cuota <= CUOTA_EXPRESS_MAX:
+            unidades = 1.0 if estado.modo == "normal" else 0.5
+            combinadas.append(Combinada(
+                picks=sel,
+                cuota_combinada=cuota,
+                unidades=unidades,
+                bookmaker_ref=_bookmaker_principal(sel),
+                tipo="express",
+            ))
+
+    if estado.modo != "normal":
+        return combinadas
+
+    # Normal: 3 picks 🟢/🟡 — solo modo normal
+    if len(buenos) >= 3:
+        sel = _picks_independientes(buenos, 3)
+        cuota = _cuota_combinada(sel)
+        if cuota <= CUOTA_NORMAL_MAX:
+            combinadas.append(Combinada(
+                picks=sel,
+                cuota_combinada=cuota,
+                unidades=0.5,
+                bookmaker_ref=_bookmaker_principal(sel),
+                tipo="normal",
+            ))
+
+    # Acumulada: 4 picks 🟢/🟡 — solo modo normal
+    if len(buenos) >= 4:
+        sel = _picks_independientes(buenos, 4)
+        cuota = _cuota_combinada(sel)
+        if cuota <= CUOTA_ACUMULADA_MAX:
+            combinadas.append(Combinada(
+                picks=sel,
+                cuota_combinada=cuota,
+                unidades=0.25,
+                bookmaker_ref=_bookmaker_principal(sel),
+                tipo="acumulada",
+            ))
+
+    return combinadas

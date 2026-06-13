@@ -12,10 +12,10 @@ CUOTA_MIN = 1.30
 CUOTA_MAX = 3.50
 EDGE_MIN = 0.04
 PROB_MIN = 0.54
-PICKS_DIARIOS = 4
+PICKS_DIARIOS = 7
 MIN_PICKS = 4
-MAX_PICKS = 4
-EXPOSICION_MAX = 8.0
+MAX_PICKS = 7
+EXPOSICION_MAX = 14.0
 
 def asignar_semaforo(edge: float) -> str:
     if edge >= 0.08:

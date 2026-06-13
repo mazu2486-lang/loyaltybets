@@ -3,7 +3,7 @@ import asyncio
 from telegram import Bot
 from telegram.error import TelegramError
 from models import PickOutput, Combinada, EstadoBanca
-from typing import List, Optional
+from typing import List
 
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
@@ -44,13 +44,20 @@ def formatear_pick(pick: PickOutput, numero: int) -> str:
         f"📊 Unidades: *{pick.unidades}u*\n"
     )
 
+_TIPO_LABEL = {
+    "express":   "⚡ EXPRESS (2 picks)",
+    "normal":    "🔥 COMBINADA (3 picks)",
+    "acumulada": "🎰 ACUMULADA (4 picks)",
+}
+
 def formatear_combinada(combinada: Combinada) -> str:
+    label = _TIPO_LABEL.get(combinada.tipo, "🔥 COMBINADA")
     equipos = " + ".join(p.equipo for p in combinada.picks)
     return (
-        f"🔥 *COMBINADA DEL DÍA*\n"
+        f"*{label}*\n"
         f"─────────────────────\n"
         f"📋 {equipos}\n"
-        f"💰 Cuota combinada: *{combinada.cuota_combinada}*\n"
+        f"💰 Cuota: *{combinada.cuota_combinada}*\n"
         f"📊 Unidades: *{combinada.unidades}u*\n"
         f"─────────────────────\n"
         f"⚠️ _Apuesta responsable. Combinadas son alto riesgo._"
@@ -89,7 +96,7 @@ def enviar_mensaje(texto: str) -> bool:
 
 def enviar_picks_canal(
     picks: List[PickOutput],
-    combinada: Optional[Combinada],
+    combinadas: List[Combinada],
     deporte: str,
     estado: EstadoBanca,
 ):
@@ -112,7 +119,7 @@ def enviar_picks_canal(
     for i, pick in enumerate(picks, 1):
         enviar_mensaje(formatear_pick(pick, i))
 
-    if combinada:
+    for combinada in combinadas:
         enviar_mensaje(formatear_combinada(combinada))
 
     enviar_mensaje(
@@ -125,7 +132,7 @@ def enviar_picks_canal(
 
 def enviar_picks_diarios_canal(
     picks: List[PickOutput],
-    combinada: Optional[Combinada],
+    combinadas: List[Combinada],
     estado: EstadoBanca,
 ):
     if not picks:
@@ -135,7 +142,7 @@ def enviar_picks_diarios_canal(
         )
         return
 
-    semaforos = {"🟢": 0, "🟡": 0, "🔴": 0}
+    semaforos: dict = {}
     for p in picks:
         semaforos[p.semaforo] = semaforos.get(p.semaforo, 0) + 1
     resumen_sem = " ".join(f"{k}×{v}" for k, v in semaforos.items() if v > 0)
@@ -151,7 +158,7 @@ def enviar_picks_diarios_canal(
     for i, pick in enumerate(picks, 1):
         enviar_mensaje(formatear_pick(pick, i))
 
-    if combinada:
+    for combinada in combinadas:
         enviar_mensaje(formatear_combinada(combinada))
 
     enviar_mensaje(
