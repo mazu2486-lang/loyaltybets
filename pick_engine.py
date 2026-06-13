@@ -1,19 +1,22 @@
 from typing import List, Optional
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from models import PickOutput, EstadoBanca
 from bankroll import calcular_unidades, cargar_estado
 from data_fetcher import (
     obtener_cuotas, extraer_mejores_cuotas,
     prob_implicita_sin_margen, calcular_ev, calcular_edge,
-    DEPORTES_CON_TOTALS,
+    DEPORTES_CON_TOTALS, SPORTS_ODDSAPI, obtener_fecha_utc_real,
 )
+from predictor import predecir, predecir_total
 
 CUOTA_MIN = 1.30
 CUOTA_MAX = 3.50
 EDGE_MIN = 0.04
 PROB_MIN = 0.54
+PICKS_DIARIOS = 7
 MIN_PICKS = 4
 MAX_PICKS = 7
-EXPOSICION_MAX = 8.0
+EXPOSICION_MAX = 14.0
 
 def asignar_semaforo(edge: float) -> str:
     if edge >= 0.08:
@@ -58,8 +61,16 @@ def _mejor_pick_evento(evento, deporte) -> Optional[PickOutput]:
         cuota_hv, bk_h = cuota_h
         cuota_av, bk_a = cuota_a
         cuota_dv = cuota_d[0] if cuota_d else None
-        probs = prob_implicita_sin_margen(cuota_hv, cuota_av, cuota_dv)
-        prob_home, prob_away = probs["local"], probs["visitante"]
+
+        # Use independent statistical model when available (real edge).
+        # Fall back to market-derived probabilities only if model fails.
+        pred = predecir(home, away, deporte)
+        if pred:
+            prob_home = pred["home"]
+            prob_away = pred["away"]
+        else:
+            probs = prob_implicita_sin_margen(cuota_hv, cuota_av, cuota_dv)
+            prob_home, prob_away = probs["local"], probs["visitante"]
 
         p = _make_pick(deporte, liga, home, home, cuota_hv, prob_home, bk_h)
         if p:
@@ -85,8 +96,15 @@ def _mejor_pick_evento(evento, deporte) -> Optional[PickOutput]:
                 continue
             cuota_ov, bk_ov = cuota_over
             cuota_uv, bk_uv = cuota_under
-            probs_t = prob_implicita_sin_margen(cuota_ov, cuota_uv)
-            prob_over, prob_under = probs_t["local"], probs_t["visitante"]
+            try:
+                pred_t = predecir_total(home, away, deporte, float(punto))
+            except (ValueError, TypeError):
+                pred_t = None
+            if pred_t:
+                prob_over, prob_under = pred_t["over"], pred_t["under"]
+            else:
+                probs_t = prob_implicita_sin_margen(cuota_ov, cuota_uv)
+                prob_over, prob_under = probs_t["local"], probs_t["visitante"]
             partido = f"{home} vs {away}"
             p_over = _make_pick(deporte, liga, partido, f"Over {punto}", cuota_ov, prob_over, bk_ov)
             p_under = _make_pick(deporte, liga, partido, f"Under {punto}", cuota_uv, prob_under, bk_uv)
@@ -107,6 +125,51 @@ def _mejor_pick_evento(evento, deporte) -> Optional[PickOutput]:
         return None
 
     return max(candidatos, key=lambda p: p.edge)
+
+def generar_picks_diarios() -> List[PickOutput]:
+    """Selecciona los 4 mejores picks del día cruzando todos los deportes disponibles."""
+    estado = cargar_estado()
+    hoy_utc = obtener_fecha_utc_real()  # una sola llamada para todos los deportes
+    todos_candidatos: List[PickOutput] = []
+
+    def _fetch_deporte(deporte: str) -> List[PickOutput]:
+        eventos = obtener_cuotas(deporte, hoy_utc=hoy_utc)
+        return [p for e in eventos for p in [_mejor_pick_evento(e, deporte)] if p is not None]
+
+    with ThreadPoolExecutor(max_workers=len(SPORTS_ODDSAPI)) as pool:
+        futures = {pool.submit(_fetch_deporte, d): d for d in SPORTS_ODDSAPI}
+        for future in as_completed(futures):
+            try:
+                todos_candidatos.extend(future.result())
+            except Exception as exc:
+                print(f"[picks_diarios] error en {futures[future]}: {exc}")
+
+    todos_candidatos.sort(key=lambda p: p.edge, reverse=True)
+
+    validos = [p for p in todos_candidatos if p.edge >= EDGE_MIN and p.prob_modelo >= PROB_MIN]
+    fallbacks = [p for p in todos_candidatos if p not in validos]
+
+    seleccionados: List[PickOutput] = []
+    exposicion = 0.0
+
+    for pick in validos:
+        if len(seleccionados) >= PICKS_DIARIOS or exposicion >= EXPOSICION_MAX:
+            break
+        u = calcular_unidades(pick.edge, estado)
+        if u > 0 and (exposicion + u) <= EXPOSICION_MAX:
+            pick.unidades = u
+            seleccionados.append(pick)
+            exposicion += u
+
+    for pick in fallbacks:
+        if len(seleccionados) >= PICKS_DIARIOS:
+            break
+        pick.unidades = 0.5
+        pick.semaforo = "🟡"
+        seleccionados.append(pick)
+
+    return seleccionados
+
 
 def generar_picks(deporte: str) -> List[PickOutput]:
     estado = cargar_estado()

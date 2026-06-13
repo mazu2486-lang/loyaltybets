@@ -6,13 +6,15 @@ from datetime import datetime, timezone, date
 ODDS_API_KEY = os.getenv("ODDS_API_KEY", "")
 API_SPORTS_KEY = os.getenv("API_SPORTS_KEY", "")
 
-DEPORTES_CON_TOTALS = {"futbol", "basquet", "mlb"}
+DEPORTES_CON_TOTALS = {"futbol", "basquet", "mlb", "mundial", "champions"}
 
 SPORTS_ODDSAPI = {
-    "futbol":  "soccer_epl",
-    "basquet": "basketball_nba",
-    "tenis":   "tennis_atp_french_open",
-    "mlb":     "baseball_mlb",
+    "mundial":   "soccer_fifa_world_cup",
+    "champions": "soccer_uefa_champs_league",
+    "futbol":    "soccer_epl",
+    "basquet":   "basketball_nba",
+    "mlb":       "baseball_mlb",
+    "tenis":     "tennis_atp_french_open",
 }
 
 def obtener_fecha_utc_real() -> date:
@@ -54,12 +56,13 @@ def evento_es_hoy(commence_time_iso: str, hoy_utc: date) -> bool:
     except Exception:
         return False
 
-def obtener_cuotas(deporte: str) -> List[Dict]:
+def obtener_cuotas(deporte: str, hoy_utc=None) -> List[Dict]:
     sport_key = SPORTS_ODDSAPI.get(deporte)
     if not sport_key or not ODDS_API_KEY:
         return []
 
-    hoy_utc = obtener_fecha_utc_real()
+    if hoy_utc is None:
+        hoy_utc = obtener_fecha_utc_real()
     markets = "h2h,totals" if deporte in DEPORTES_CON_TOTALS else "h2h"
 
     url = f"https://api.the-odds-api.com/v4/sports/{sport_key}/odds"

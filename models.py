@@ -21,6 +21,7 @@ class Combinada:
     cuota_combinada: float
     unidades: float
     bookmaker_ref: str
+    tipo: str = "normal"  # "express" | "normal" | "acumulada"
     def dict(self):
         return asdict(self)
 @dataclass
