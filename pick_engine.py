@@ -7,7 +7,7 @@ from data_fetcher import (
     prob_implicita_sin_margen, calcular_ev, calcular_edge,
     DEPORTES_CON_TOTALS, SPORTS_ODDSAPI, obtener_fecha_utc_real,
 )
-from predictor import predecir
+from predictor import predecir, predecir_total
 
 CUOTA_MIN = 1.30
 CUOTA_MAX = 3.50
@@ -96,8 +96,15 @@ def _mejor_pick_evento(evento, deporte) -> Optional[PickOutput]:
                 continue
             cuota_ov, bk_ov = cuota_over
             cuota_uv, bk_uv = cuota_under
-            probs_t = prob_implicita_sin_margen(cuota_ov, cuota_uv)
-            prob_over, prob_under = probs_t["local"], probs_t["visitante"]
+            try:
+                pred_t = predecir_total(home, away, deporte, float(punto))
+            except (ValueError, TypeError):
+                pred_t = None
+            if pred_t:
+                prob_over, prob_under = pred_t["over"], pred_t["under"]
+            else:
+                probs_t = prob_implicita_sin_margen(cuota_ov, cuota_uv)
+                prob_over, prob_under = probs_t["local"], probs_t["visitante"]
             partido = f"{home} vs {away}"
             p_over = _make_pick(deporte, liga, partido, f"Over {punto}", cuota_ov, prob_over, bk_ov)
             p_under = _make_pick(deporte, liga, partido, f"Under {punto}", cuota_uv, prob_under, bk_uv)

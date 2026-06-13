@@ -124,13 +124,79 @@ def predecir_mlb(home: str, away: str) -> Optional[Dict]:
     }
 
 
-# ── Dispatcher ───────────────────────────────────────────────────────────────
+NBA_TOTAL_STD = 11.0   # NBA game total standard deviation ≈ 11 pts
+MLB_TOTAL_STD = 4.5    # MLB run total standard deviation ≈ 4.5 runs
+
+
+def _normal_prob_over(expected: float, std: float, linea: float) -> float:
+    """P(X > linea) where X ~ Normal(expected, std)."""
+    z = (linea - expected) / (std * math.sqrt(2))
+    return round(0.5 * (1 - math.erf(z)), 4)
+
+
+def predecir_total_futbol(home: str, away: str, linea: float) -> Optional[Dict]:
+    """P(Over/Under linea goals) using Poisson model."""
+    stats_h = get_stats_futbol(home)
+    stats_a = get_stats_futbol(away)
+    if not stats_h or not stats_a:
+        return None
+
+    league_avg = LEAGUE_AVG_GOALS / 2
+    lam_h = (stats_h["goals_for"] / league_avg) * (stats_a["goals_against"] / league_avg) * league_avg * HOME_FACTOR_FUTBOL
+    lam_a = (stats_a["goals_for"] / league_avg) * (stats_h["goals_against"] / league_avg) * league_avg
+
+    prob_over = 0.0
+    for i in range(15):
+        for j in range(15):
+            if i + j > linea:
+                prob_over += _poisson_pmf(i, lam_h) * _poisson_pmf(j, lam_a)
+
+    return {"over": round(prob_over, 4), "under": round(1 - prob_over, 4)}
+
+
+def predecir_total_basquet(home: str, away: str, linea: float) -> Optional[Dict]:
+    """P(Over/Under linea pts) using ppg/papg from standings + normal dist."""
+    standings = get_standings_basquet()
+    if not standings:
+        return None
+
+    th = _buscar_en_standings(home, standings)
+    ta = _buscar_en_standings(away, standings)
+    if not th or not ta:
+        return None
+
+    exp_home = (th["ppg"] + ta["papg"]) / 2
+    exp_away = (ta["ppg"] + th["papg"]) / 2
+    expected_total = exp_home + exp_away
+
+    prob_over = _normal_prob_over(expected_total, NBA_TOTAL_STD, linea)
+    return {"over": prob_over, "under": round(1 - prob_over, 4)}
+
+
+def predecir_total_mlb(home: str, away: str, linea: float) -> Optional[Dict]:
+    """P(Over/Under linea runs) using win% standings as proxy + normal dist."""
+    standings = get_standings_mlb()
+    if not standings:
+        return None
+
+    th = _buscar_en_standings(home, standings)
+    ta = _buscar_en_standings(away, standings)
+    if not th or not ta:
+        return None
+
+    # Approximate runs from win%: better teams score more
+    runs_h = 4.5 + (th["win_pct"] - 0.5) * 4
+    runs_a = 4.5 + (ta["win_pct"] - 0.5) * 4
+    expected_total = runs_h + runs_a
+
+    prob_over = _normal_prob_over(expected_total, MLB_TOTAL_STD, linea)
+    return {"over": prob_over, "under": round(1 - prob_over, 4)}
+
+
+# ── Dispatchers ───────────────────────────────────────────────────────────────
 
 def predecir(home: str, away: str, sport: str) -> Optional[Dict]:
-    """
-    Returns model probability dict for a match, or None if unavailable.
-    None → pick_engine falls back to market-derived probabilities.
-    """
+    """H2H model probabilities. Returns None → fallback to market probs."""
     try:
         if sport == "futbol":
             return predecir_futbol(home, away)
@@ -139,5 +205,19 @@ def predecir(home: str, away: str, sport: str) -> Optional[Dict]:
         if sport == "mlb":
             return predecir_mlb(home, away)
     except Exception as e:
-        print(f"[predictor] {sport} {home} vs {away}: {e}")
+        print(f"[predictor] h2h {sport} {home} vs {away}: {e}")
+    return None
+
+
+def predecir_total(home: str, away: str, sport: str, linea: float) -> Optional[Dict]:
+    """Totals model probabilities. Returns None → fallback to market probs."""
+    try:
+        if sport == "futbol":
+            return predecir_total_futbol(home, away, linea)
+        if sport == "basquet":
+            return predecir_total_basquet(home, away, linea)
+        if sport == "mlb":
+            return predecir_total_mlb(home, away, linea)
+    except Exception as e:
+        print(f"[predictor] total {sport} {home} vs {away} {linea}: {e}")
     return None
