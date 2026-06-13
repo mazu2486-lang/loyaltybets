@@ -76,6 +76,35 @@ def _pie_aviso() -> str:
 
 # ── Channel sending functions ─────────────────────────────────────────────────
 
+def _pick_compacto(pick: PickOutput, numero: int) -> str:
+    icono = _icono(pick.deporte)
+    if " vs " in pick.equipo:
+        equipo_txt, _ = pick.equipo.split(" vs ", 1)
+    else:
+        equipo_txt = pick.equipo
+    if "Over" in pick.tipo_apuesta or "Under" in pick.tipo_apuesta:
+        apuesta = pick.tipo_apuesta
+    else:
+        apuesta = f"Victoria {equipo_txt}"
+    return (
+        f"{pick.semaforo} *PICK #{numero}* — {pick.liga}\n"
+        f"{icono} {equipo_txt}\n"
+        f"📌 {apuesta} · Cuota: *{pick.cuota}* · *{pick.unidades}u*\n"
+    )
+
+
+def _combinadas_compacto(combinadas: List[Combinada]) -> str:
+    if not combinadas:
+        return ""
+    lineas = ["══════════════════════════"]
+    for c in combinadas:
+        label = _TIPO_LABEL.get(c.tipo, "🔥 COMBINADA")
+        equipos = " + ".join(p.equipo.split(" vs ")[0] if " vs " in p.equipo else p.equipo for p in c.picks)
+        lineas.append(f"{label}: {equipos} @ *{c.cuota_combinada}* · *{c.unidades}u*")
+    lineas.append("══════════════════════════")
+    return "\n".join(lineas)
+
+
 def enviar_picks_diarios_canal(
     picks: List[PickOutput],
     combinadas: List[Combinada],
@@ -94,22 +123,24 @@ def enviar_picks_diarios_canal(
         sem[p.semaforo] = sem.get(p.semaforo, 0) + 1
     sem_txt = "  ".join(f"{k}×{v}" for k, v in sem.items() if v > 0)
 
-    enviar_mensaje(
+    partes = [
         f"🏆 *LOYALTYBETS — PICKS DEL DÍA*\n"
         f"══════════════════════════\n"
         f"{_modo_aviso(estado)}"
-        f"📋 *{len(picks)} picks* seleccionados hoy\n"
-        f"Confianza: {sem_txt}\n"
-        f"══════════════════════════"
-    )
+        f"📋 *{len(picks)} picks*  |  {sem_txt}\n"
+        f"══════════════════════════\n",
+    ]
 
     for i, pick in enumerate(picks, 1):
-        enviar_mensaje(formatear_pick(pick, i))
+        partes.append(_pick_compacto(pick, i))
 
-    for combinada in combinadas:
-        enviar_mensaje(formatear_combinada(combinada))
+    comb_txt = _combinadas_compacto(combinadas)
+    if comb_txt:
+        partes.append(comb_txt + "\n")
 
-    enviar_mensaje(_pie_aviso())
+    partes.append(_pie_aviso())
+
+    enviar_mensaje("\n".join(partes))
 
 
 def enviar_picks_canal(
