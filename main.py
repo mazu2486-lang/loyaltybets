@@ -99,6 +99,16 @@ def cron_diario():
 
 # ── Results & stats ───────────────────────────────────────────────────────────
 
+@app.get("/cron/semanal")
+def cron_semanal():
+    """Publica el resumen semanal automáticamente (llamar cada lunes)."""
+    s = get_stats()
+    if s["total"] == 0:
+        return {"publicado": False, "razon": "Sin picks registrados aún"}
+    enviar_resumen_semanal(s["total"], s["ganados"], s["unidades"], s["racha"])
+    return {"publicado": True, "stats": s}
+
+
 @app.get("/resultados/verificar")
 def verificar_resultados(fecha: str = None):
     """Checks API-Sports for results of pending picks. Defaults to yesterday."""

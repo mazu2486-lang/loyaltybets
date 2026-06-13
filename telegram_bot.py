@@ -94,19 +94,10 @@ def enviar_picks_diarios_canal(
         sem[p.semaforo] = sem.get(p.semaforo, 0) + 1
     sem_txt = "  ".join(f"{k}×{v}" for k, v in sem.items() if v > 0)
 
-    stats_linea = ""
-    if stats and stats.get("total", 0) > 0:
-        signo = "+" if stats["unidades"] >= 0 else ""
-        stats_linea = (
-            f"📈 _Histórico: {stats['win_pct']}% acierto · "
-            f"{signo}{stats['unidades']}u · {stats['total']} picks_\n"
-        )
-
     enviar_mensaje(
         f"🏆 *LOYALTYBETS — PICKS DEL DÍA*\n"
         f"══════════════════════════\n"
         f"{_modo_aviso(estado)}"
-        f"{stats_linea}"
         f"📋 *{len(picks)} picks* seleccionados hoy\n"
         f"Confianza: {sem_txt}\n"
         f"══════════════════════════"
