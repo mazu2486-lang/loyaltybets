@@ -7,8 +7,11 @@ from combinada import armar_combinadas
 from bankroll import cargar_estado, actualizar_resultado, reset_estado
 from telegram_bot import enviar_picks_canal, enviar_picks_diarios_canal, enviar_resumen_semanal
 from daily_tracker import ya_se_enviaron_hoy, marcar_enviados, resetear
+from picks_tracker import guardar_picks_dia, get_stats
+from results_checker import verificar_picks_fecha
+from data_fetcher import obtener_fecha_utc_real
 
-app = FastAPI(title="LoyaltyBet Pick Engine", version="2.0.0")
+app = FastAPI(title="LoyaltyBet Pick Engine", version="3.0.0")
 
 Deporte = Literal["futbol", "basquet", "mlb", "tenis"]
 
@@ -16,8 +19,10 @@ Deporte = Literal["futbol", "basquet", "mlb", "tenis"]
 @app.get("/health")
 def health():
     estado = cargar_estado()
-    return {"status": "ok", "bankroll_mode": estado.modo}
+    return {"status": "ok", "bankroll_mode": estado.modo, "stats": get_stats()}
 
+
+# ── Picks per sport (manual) ──────────────────────────────────────────────────
 
 @app.get("/picks/{deporte}/preview")
 def preview_picks(deporte: Deporte):
@@ -39,6 +44,8 @@ def publicar_picks(deporte: Deporte):
     }
 
 
+# ── Daily picks (main flow) ───────────────────────────────────────────────────
+
 @app.get("/picks/diarios")
 def publicar_picks_diarios(forzar: bool = False):
     if not forzar and ya_se_enviaron_hoy():
@@ -47,7 +54,15 @@ def publicar_picks_diarios(forzar: bool = False):
     estado = cargar_estado()
     picks = generar_picks_diarios()
     combinadas = armar_combinadas(picks, estado)
-    enviar_picks_diarios_canal(picks, combinadas, estado)
+    stats = get_stats()
+    enviar_picks_diarios_canal(picks, combinadas, estado, stats=stats)
+
+    try:
+        fecha = obtener_fecha_utc_real().isoformat()
+        guardar_picks_dia(picks, fecha)
+    except Exception as e:
+        print(f"[main] Error guardando picks: {e}")
+
     marcar_enviados()
     return {
         "publicado": True,
@@ -65,15 +80,44 @@ def cron_diario():
     estado = cargar_estado()
     picks = generar_picks_diarios()
     combinadas = armar_combinadas(picks, estado)
-    enviar_picks_diarios_canal(picks, combinadas, estado)
+    stats = get_stats()
+    enviar_picks_diarios_canal(picks, combinadas, estado, stats=stats)
+
+    try:
+        fecha = obtener_fecha_utc_real().isoformat()
+        guardar_picks_dia(picks, fecha)
+    except Exception as e:
+        print(f"[main] Error guardando picks: {e}")
+
     marcar_enviados()
     return {
         "accion": "enviado",
         "picks_generados": len(picks),
-        "combinadas": [c.dict() for c in combinadas],
         "modo_banca": estado.modo,
     }
 
+
+# ── Results & stats ───────────────────────────────────────────────────────────
+
+@app.get("/resultados/verificar")
+def verificar_resultados(fecha: str = None):
+    """Checks API-Sports for results of pending picks. Defaults to yesterday."""
+    if not fecha:
+        from datetime import date, timedelta
+        try:
+            hoy = obtener_fecha_utc_real()
+        except Exception:
+            hoy = date.today()
+        fecha = (hoy - timedelta(days=1)).isoformat()
+    return verificar_picks_fecha(fecha)
+
+
+@app.get("/stats")
+def estadisticas():
+    return get_stats()
+
+
+# ── Bankroll & admin ──────────────────────────────────────────────────────────
 
 @app.post("/resultado")
 def registrar_resultado(gano: bool):
