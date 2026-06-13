@@ -68,7 +68,7 @@ def formatear_combinada(combinada: Combinada) -> str:
 def _pie_aviso() -> str:
     return (
         "━━━━━━━━━━━━━━━━━━━━━━\n"
-        "⚠️ *Apuesta con responsabilidad.*\n"
+        "⚠️ *Recuerda apostar con responsabilidad.*\n"
         "_Solo lo que puedas perder. +18._\n"
         "━━━━━━━━━━━━━━━━━━━━━━"
     )
