@@ -4,15 +4,16 @@ from bankroll import calcular_unidades, cargar_estado
 from data_fetcher import (
     obtener_cuotas, extraer_mejores_cuotas,
     prob_implicita_sin_margen, calcular_ev, calcular_edge,
-    DEPORTES_CON_TOTALS,
+    DEPORTES_CON_TOTALS, SPORTS_ODDSAPI,
 )
 
 CUOTA_MIN = 1.30
 CUOTA_MAX = 3.50
 EDGE_MIN = 0.04
 PROB_MIN = 0.54
+PICKS_DIARIOS = 4
 MIN_PICKS = 4
-MAX_PICKS = 7
+MAX_PICKS = 4
 EXPOSICION_MAX = 8.0
 
 def asignar_semaforo(edge: float) -> str:
@@ -107,6 +108,45 @@ def _mejor_pick_evento(evento, deporte) -> Optional[PickOutput]:
         return None
 
     return max(candidatos, key=lambda p: p.edge)
+
+def generar_picks_diarios() -> List[PickOutput]:
+    """Selecciona los 4 mejores picks del día cruzando todos los deportes disponibles."""
+    estado = cargar_estado()
+    todos_candidatos: List[PickOutput] = []
+
+    for deporte in SPORTS_ODDSAPI:
+        eventos = obtener_cuotas(deporte)
+        for evento in eventos:
+            p = _mejor_pick_evento(evento, deporte)
+            if p is not None:
+                todos_candidatos.append(p)
+
+    todos_candidatos.sort(key=lambda p: p.edge, reverse=True)
+
+    validos = [p for p in todos_candidatos if p.edge >= EDGE_MIN and p.prob_modelo >= PROB_MIN]
+    fallbacks = [p for p in todos_candidatos if p not in validos]
+
+    seleccionados: List[PickOutput] = []
+    exposicion = 0.0
+
+    for pick in validos:
+        if len(seleccionados) >= PICKS_DIARIOS or exposicion >= EXPOSICION_MAX:
+            break
+        u = calcular_unidades(pick.edge, estado)
+        if u > 0 and (exposicion + u) <= EXPOSICION_MAX:
+            pick.unidades = u
+            seleccionados.append(pick)
+            exposicion += u
+
+    for pick in fallbacks:
+        if len(seleccionados) >= PICKS_DIARIOS:
+            break
+        pick.unidades = 0.5
+        pick.semaforo = "🟡"
+        seleccionados.append(pick)
+
+    return seleccionados
+
 
 def generar_picks(deporte: str) -> List[PickOutput]:
     estado = cargar_estado()

@@ -123,5 +123,45 @@ def enviar_picks_canal(
         "━━━━━━━━━━━━━━━━━━━━━━"
     )
 
+def enviar_picks_diarios_canal(
+    picks: List[PickOutput],
+    combinada: Optional[Combinada],
+    estado: EstadoBanca,
+):
+    if not picks:
+        enviar_mensaje(
+            "🔍 *Sin picks válidos hoy.*\n"
+            "_El sistema no encontró valor en ningún deporte. Mañana seguimos._"
+        )
+        return
+
+    semaforos = {"🟢": 0, "🟡": 0, "🔴": 0}
+    for p in picks:
+        semaforos[p.semaforo] = semaforos.get(p.semaforo, 0) + 1
+    resumen_sem = " ".join(f"{k}×{v}" for k, v in semaforos.items() if v > 0)
+
+    enviar_mensaje(
+        f"🎯 *PICKS DEL DÍA — LOYALTYBETS*\n"
+        f"══════════════════════\n"
+        f"{_texto_modo(estado)}"
+        f"📋 {len(picks)} picks seleccionados — {resumen_sem}\n"
+        f"══════════════════════"
+    )
+
+    for i, pick in enumerate(picks, 1):
+        enviar_mensaje(formatear_pick(pick, i))
+
+    if combinada:
+        enviar_mensaje(formatear_combinada(combinada))
+
+    enviar_mensaje(
+        "━━━━━━━━━━━━━━━━━━━━━━\n"
+        "⚠️ *Apuesta con responsabilidad.*\n"
+        "_Juega solo lo que puedas perder._\n"
+        "🔞 Solo mayores de 18 años.\n"
+        "━━━━━━━━━━━━━━━━━━━━━━"
+    )
+
+
 def enviar_resumen_semanal(picks_totales, picks_ganados, unidades, racha):
     enviar_mensaje(formatear_resumen_semanal(picks_totales, picks_ganados, unidades, racha))
