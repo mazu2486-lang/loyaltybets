@@ -1,10 +1,11 @@
 from typing import List, Optional
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from models import PickOutput, EstadoBanca
 from bankroll import calcular_unidades, cargar_estado
 from data_fetcher import (
     obtener_cuotas, extraer_mejores_cuotas,
     prob_implicita_sin_margen, calcular_ev, calcular_edge,
-    DEPORTES_CON_TOTALS, SPORTS_ODDSAPI,
+    DEPORTES_CON_TOTALS, SPORTS_ODDSAPI, obtener_fecha_utc_real,
 )
 
 CUOTA_MIN = 1.30
@@ -112,14 +113,20 @@ def _mejor_pick_evento(evento, deporte) -> Optional[PickOutput]:
 def generar_picks_diarios() -> List[PickOutput]:
     """Selecciona los 4 mejores picks del día cruzando todos los deportes disponibles."""
     estado = cargar_estado()
+    hoy_utc = obtener_fecha_utc_real()  # una sola llamada para todos los deportes
     todos_candidatos: List[PickOutput] = []
 
-    for deporte in SPORTS_ODDSAPI:
-        eventos = obtener_cuotas(deporte)
-        for evento in eventos:
-            p = _mejor_pick_evento(evento, deporte)
-            if p is not None:
-                todos_candidatos.append(p)
+    def _fetch_deporte(deporte: str) -> List[PickOutput]:
+        eventos = obtener_cuotas(deporte, hoy_utc=hoy_utc)
+        return [p for e in eventos for p in [_mejor_pick_evento(e, deporte)] if p is not None]
+
+    with ThreadPoolExecutor(max_workers=len(SPORTS_ODDSAPI)) as pool:
+        futures = {pool.submit(_fetch_deporte, d): d for d in SPORTS_ODDSAPI}
+        for future in as_completed(futures):
+            try:
+                todos_candidatos.extend(future.result())
+            except Exception as exc:
+                print(f"[picks_diarios] error en {futures[future]}: {exc}")
 
     todos_candidatos.sort(key=lambda p: p.edge, reverse=True)
 
