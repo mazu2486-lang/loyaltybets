@@ -7,6 +7,7 @@ from data_fetcher import (
     prob_implicita_sin_margen, calcular_ev, calcular_edge,
     DEPORTES_CON_TOTALS, SPORTS_ODDSAPI, obtener_fecha_utc_real,
 )
+from predictor import predecir
 
 CUOTA_MIN = 1.30
 CUOTA_MAX = 3.50
@@ -60,8 +61,16 @@ def _mejor_pick_evento(evento, deporte) -> Optional[PickOutput]:
         cuota_hv, bk_h = cuota_h
         cuota_av, bk_a = cuota_a
         cuota_dv = cuota_d[0] if cuota_d else None
-        probs = prob_implicita_sin_margen(cuota_hv, cuota_av, cuota_dv)
-        prob_home, prob_away = probs["local"], probs["visitante"]
+
+        # Use independent statistical model when available (real edge).
+        # Fall back to market-derived probabilities only if model fails.
+        pred = predecir(home, away, deporte)
+        if pred:
+            prob_home = pred["home"]
+            prob_away = pred["away"]
+        else:
+            probs = prob_implicita_sin_margen(cuota_hv, cuota_av, cuota_dv)
+            prob_home, prob_away = probs["local"], probs["visitante"]
 
         p = _make_pick(deporte, liga, home, home, cuota_hv, prob_home, bk_h)
         if p:
