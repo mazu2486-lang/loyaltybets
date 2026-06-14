@@ -5,18 +5,13 @@ Posts win/loss updates to the Telegram channel automatically.
 from typing import Optional, List, Dict
 from sports_data import (
     _get, _cache_get, _cache_set, similitud,
-    FOOTBALL_LEAGUE, FOOTBALL_SEASON,
     WORLD_CUP_LEAGUE, WORLD_CUP_SEASON,
-    CHAMPIONS_LEAGUE, CHAMPIONS_SEASON,
-    BASKETBALL_LEAGUE, BASKETBALL_SEASON,
     MLB_LEAGUE, MLB_SEASON,
 )
 
 # Maps deporte key → (API-Sports league_id, season)
 FOOTBALL_LEAGUES = {
-    "futbol":    (FOOTBALL_LEAGUE,  FOOTBALL_SEASON),
-    "mundial":   (WORLD_CUP_LEAGUE, WORLD_CUP_SEASON),
-    "champions": (CHAMPIONS_LEAGUE, CHAMPIONS_SEASON),
+    "mundial": (WORLD_CUP_LEAGUE, WORLD_CUP_SEASON),
 }
 from picks_tracker import cargar_picks_pendientes_de_fecha, marcar_resultado, get_stats
 from bankroll import actualizar_resultado
@@ -32,8 +27,8 @@ def _coincide(name_api: str, name_pick: str) -> bool:
 # ── Per-sport result fetchers ─────────────────────────────────────────────────
 
 def _resultado_futbol(pick: Dict, fecha: str) -> Optional[str]:
-    deporte = pick.get("deporte", "futbol")
-    league_id, season = FOOTBALL_LEAGUES.get(deporte, (FOOTBALL_LEAGUE, FOOTBALL_SEASON))
+    deporte = pick.get("deporte", "mundial")
+    league_id, season = FOOTBALL_LEAGUES.get(deporte, (WORLD_CUP_LEAGUE, WORLD_CUP_SEASON))
     cache_key = f"res_{deporte}_{fecha}"
     fixtures = _cache_get(cache_key)
     if fixtures is None:
@@ -196,10 +191,8 @@ def verificar_picks_fecha(fecha: str) -> Dict:
         return {"verificados": 0, "stats": get_stats()}
 
     verificadores = {
-        "futbol":    _resultado_futbol,
-        "mundial":   _resultado_futbol,
-        "champions": _resultado_futbol,
-        "mlb":       _resultado_mlb,
+        "mundial": _resultado_futbol,
+        "mlb":     _resultado_mlb,
     }
 
     actualizados = []

@@ -21,12 +21,10 @@ EXPOSICION_MAX = 14.0
 
 # Football markets are more efficient — require higher edge threshold
 EDGE_MIN_POR_DEPORTE = {
-    "futbol": 0.06, "mundial": 0.06, "champions": 0.06,
-    "mlb": 0.07,
+    "mundial": 0.06, "mlb": 0.07,
 }
 PROB_MIN_POR_DEPORTE = {
-    "futbol": 0.57, "mundial": 0.57, "champions": 0.57,
-    "mlb": 0.58,
+    "mundial": 0.57, "mlb": 0.58,
 }
 
 def asignar_semaforo(edge: float) -> str:
@@ -86,7 +84,7 @@ def _mejores_picks_evento(evento, deporte) -> List[PickOutput]:
             prob_home, prob_away = probs["local"], probs["visitante"]
             prob_draw = 0
 
-        draw_limit = 0.30 if deporte in ("futbol", "mundial", "champions") else 0
+        draw_limit = 0.30 if deporte == "mundial" else 0
         if prob_draw <= draw_limit:
             p = _make_pick(deporte, liga, partido, f"Gana {home}", cuota_hv, prob_home, bk_h)
             if p:

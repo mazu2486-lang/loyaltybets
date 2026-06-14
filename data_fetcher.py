@@ -6,13 +6,11 @@ from datetime import datetime, timezone, date
 ODDS_API_KEY = os.getenv("ODDS_API_KEY", "")
 API_SPORTS_KEY = os.getenv("API_SPORTS_KEY", "")
 
-DEPORTES_CON_TOTALS = {"futbol", "mlb", "mundial", "champions"}
+DEPORTES_CON_TOTALS = {"mundial", "mlb"}
 
 SPORTS_ODDSAPI = {
-    "mundial":   "soccer_fifa_world_cup",
-    "champions": "soccer_uefa_champs_league",
-    "futbol":    "soccer_epl",
-    "mlb":       "baseball_mlb",
+    "mundial": "soccer_fifa_world_cup",
+    "mlb":     "baseball_mlb",
 }
 
 def obtener_fecha_utc_real() -> date:
