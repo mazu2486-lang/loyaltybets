@@ -237,6 +237,12 @@ def get_stats_futbol(team_name: str, league_id: int = FOOTBALL_LEAGUE, season: i
         return None
 
     r = data["response"]
+    # Require at least 3 games to have reliable averages
+    played = r.get("fixtures", {}).get("played", {}).get("total") or 0
+    if played < 3:
+        _cache_set(cache_key, None)
+        return None
+
     gf = r.get("goals", {}).get("for", {}).get("average", {}).get("total")
     ga = r.get("goals", {}).get("against", {}).get("average", {}).get("total")
     if gf is None or ga is None:

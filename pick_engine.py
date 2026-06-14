@@ -156,6 +156,16 @@ def generar_picks_diarios() -> List[PickOutput]:
 
     todos_candidatos.sort(key=lambda p: p.edge, reverse=True)
 
+    # Deduplicate: max one pick per game (equipo field = "Home vs Away")
+    partidos_vistos: set = set()
+    candidatos_unicos: List[PickOutput] = []
+    for p in todos_candidatos:
+        partido = p.equipo if " vs " in p.equipo else p.equipo
+        if partido not in partidos_vistos:
+            partidos_vistos.add(partido)
+            candidatos_unicos.append(p)
+    todos_candidatos = candidatos_unicos
+
     validos = [
         p for p in todos_candidatos
         if p.edge >= EDGE_MIN_POR_DEPORTE.get(p.deporte, EDGE_MIN)
