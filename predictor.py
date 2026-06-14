@@ -11,8 +11,8 @@ Returns None on failure so pick_engine can fall back gracefully.
 import math
 from typing import Dict, Optional, List
 from sports_data import (
-    get_stats_futbol, get_standings_basquet, get_standings_mlb, similitud,
-    get_forma_reciente_futbol,
+    get_stats_futbol, get_standings_basquet, get_standings_mlb, get_stats_mlb,
+    similitud, get_forma_reciente_futbol,
 )
 
 LEAGUE_AVG_GOALS = 2.65      # Premier League goals/game (both teams combined)
@@ -137,13 +137,11 @@ def predecir_mlb(home: str, away: str) -> Optional[Dict]:
 
     wp_h = min(th["win_pct"] + HOME_EDGE_MLB, 0.99)
     wp_a = ta["win_pct"]
-    total = wp_h + wp_a
-    if total <= 0:
-        return None
+    prob_home = _log5(wp_h, wp_a)
 
     return {
-        "home": round(wp_h / total, 4),
-        "away": round(wp_a / total, 4),
+        "home": round(prob_home, 4),
+        "away": round(1 - prob_home, 4),
     }
 
 
@@ -200,20 +198,25 @@ def predecir_total_basquet(home: str, away: str, linea: float) -> Optional[Dict]
 
 
 def predecir_total_mlb(home: str, away: str, linea: float) -> Optional[Dict]:
-    """P(Over/Under linea runs) using win% standings as proxy + normal dist."""
-    standings = get_standings_mlb()
-    if not standings:
-        return None
+    """P(Over/Under linea runs) using real rpg/rapg from API + normal dist."""
+    stats_h = get_stats_mlb(home)
+    stats_a = get_stats_mlb(away)
 
-    th = _buscar_en_standings(home, standings)
-    ta = _buscar_en_standings(away, standings)
-    if not th or not ta:
-        return None
-
-    # Approximate runs from win%: better teams score more
-    runs_h = 4.5 + (th["win_pct"] - 0.5) * 4
-    runs_a = 4.5 + (ta["win_pct"] - 0.5) * 4
-    expected_total = runs_h + runs_a
+    if stats_h and stats_a:
+        # Use actual runs scored/allowed per game — weight offense 60% / defense 40%
+        exp_home = stats_h["rpg"] * 0.6 + stats_a["rapg"] * 0.4
+        exp_away = stats_a["rpg"] * 0.6 + stats_h["rapg"] * 0.4
+        expected_total = exp_home + exp_away
+    else:
+        # Fallback to win%-based estimate
+        standings = get_standings_mlb()
+        if not standings:
+            return None
+        th = _buscar_en_standings(home, standings)
+        ta = _buscar_en_standings(away, standings)
+        if not th or not ta:
+            return None
+        expected_total = (4.5 + (th["win_pct"] - 0.5) * 4) + (4.5 + (ta["win_pct"] - 0.5) * 4)
 
     prob_over = _normal_prob_over(expected_total, MLB_TOTAL_STD, linea)
     return {"over": prob_over, "under": round(1 - prob_over, 4)}
