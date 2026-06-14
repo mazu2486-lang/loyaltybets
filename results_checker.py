@@ -199,7 +199,6 @@ def verificar_picks_fecha(fecha: str) -> Dict:
         "futbol":    _resultado_futbol,
         "mundial":   _resultado_futbol,
         "champions": _resultado_futbol,
-        "basquet":   _resultado_basquet,
         "mlb":       _resultado_mlb,
     }
 

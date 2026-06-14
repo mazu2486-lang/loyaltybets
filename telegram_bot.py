@@ -8,10 +8,10 @@ from typing import List
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
-_ICONO_DEPORTE = {"futbol": "⚽", "mundial": "🏆", "champions": "⭐", "basquet": "🏀", "mlb": "⚾"}
-_LIGA_NOMBRE   = {"futbol": "Premier League", "mundial": "Mundial FIFA 2026", "champions": "Champions League", "basquet": "NBA", "mlb": "MLB"}
+_ICONO_DEPORTE = {"futbol": "⚽", "mundial": "🏆", "champions": "⭐", "mlb": "⚾"}
+_LIGA_NOMBRE   = {"futbol": "Premier League", "mundial": "Mundial FIFA 2026", "champions": "Champions League", "mlb": "MLB"}
 _TIPO_LABEL    = {"express": "⚡ EXPRESS", "normal": "🔥 COMBINADA", "acumulada": "🎰 ACUMULADA"}
-_TOTAL_LABEL   = {"futbol": "goles", "mundial": "goles", "champions": "goles", "basquet": "puntos", "mlb": "carreras"}
+_TOTAL_LABEL   = {"futbol": "goles", "mundial": "goles", "champions": "goles", "mlb": "carreras"}
 
 def _icono(deporte: str) -> str:
     return _ICONO_DEPORTE.get(deporte, "🎯")

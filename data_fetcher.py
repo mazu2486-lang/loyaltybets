@@ -6,13 +6,12 @@ from datetime import datetime, timezone, date
 ODDS_API_KEY = os.getenv("ODDS_API_KEY", "")
 API_SPORTS_KEY = os.getenv("API_SPORTS_KEY", "")
 
-DEPORTES_CON_TOTALS = {"futbol", "basquet", "mlb", "mundial", "champions"}
+DEPORTES_CON_TOTALS = {"futbol", "mlb", "mundial", "champions"}
 
 SPORTS_ODDSAPI = {
     "mundial":   "soccer_fifa_world_cup",
     "champions": "soccer_uefa_champs_league",
     "futbol":    "soccer_epl",
-    "basquet":   "basketball_nba",
     "mlb":       "baseball_mlb",
 }
 
