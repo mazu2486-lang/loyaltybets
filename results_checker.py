@@ -76,8 +76,12 @@ def _resultado_futbol(pick: Dict, fecha: str) -> Optional[str]:
             linea = float(tipo.split()[1])
             return "ganado" if (gh + ga) < linea else "perdido"
 
-        # H2H — equipo is the team we backed
-        if _coincide(h_name, equipo):
+        # H2H — tipo_apuesta is "Gana {team}"
+        if tipo.startswith("Gana "):
+            equipo_apostado = tipo[5:].strip()
+        else:
+            equipo_apostado = equipo.split(" vs ")[0] if " vs " in equipo else equipo
+        if _coincide(h_name, equipo_apostado):
             return "ganado" if gh > ga else "perdido"
         else:
             return "ganado" if ga > gh else "perdido"

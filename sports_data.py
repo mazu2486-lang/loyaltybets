@@ -99,6 +99,44 @@ def _get(base_url: str, endpoint: str, params: Dict) -> Optional[Dict]:
 
 # ── Football ─────────────────────────────────────────────────────────────────
 
+def get_forma_reciente_futbol(team_name: str) -> float:
+    """Returns a form multiplier [0.85, 1.15] based on points earned in last 5 games."""
+    team_id = _buscar_team_id_futbol(team_name)
+    if not team_id:
+        return 1.0
+
+    cache_key = f"fb_forma_{team_name.lower()}"
+    cached = _cache_get(cache_key)
+    if cached is not None:
+        return cached
+
+    data = _get("https://v3.football.api-sports.io", "fixtures", {"team": team_id, "last": 5})
+    if not data or not data.get("response"):
+        _cache_set(cache_key, 1.0)
+        return 1.0
+
+    puntos = 0
+    partidos = 0
+    for f in data["response"]:
+        status = f.get("fixture", {}).get("status", {}).get("short", "")
+        if status not in ("FT", "AET", "PEN"):
+            continue
+        teams = f.get("teams", {})
+        goals = f.get("goals", {})
+        gh = goals.get("home") or 0
+        ga = goals.get("away") or 0
+        es_local = teams.get("home", {}).get("id") == team_id
+        if es_local:
+            puntos += 3 if gh > ga else (1 if gh == ga else 0)
+        else:
+            puntos += 3 if ga > gh else (1 if gh == ga else 0)
+        partidos += 1
+
+    factor = 0.85 + (puntos / (partidos * 3)) * 0.30 if partidos > 0 else 1.0
+    _cache_set(cache_key, factor)
+    return factor
+
+
 def _buscar_team_id_futbol(name: str) -> Optional[int]:
     cache_key = f"fb_id_{name.lower()}"
     cached = _cache_get(cache_key)
@@ -193,6 +231,63 @@ def get_standings_basquet() -> Optional[List[Dict]]:
 
 
 # ── MLB ───────────────────────────────────────────────────────────────────────
+
+def _buscar_team_id_mlb(name: str) -> Optional[int]:
+    cache_key = f"mlb_id_{name.lower()}"
+    cached = _cache_get(cache_key)
+    if cached is not None:
+        return cached
+
+    data = _get("https://v1.baseball.api-sports.io", "teams", {"search": name[:25]})
+    if not data or not data.get("response"):
+        _cache_set(cache_key, None)
+        return None
+
+    teams = data["response"]
+    best = max(teams, key=lambda t: similitud(name, t["team"]["name"]), default=None)
+    if not best or similitud(name, best["team"]["name"]) < 0.5:
+        _cache_set(cache_key, None)
+        return None
+
+    tid = best["team"]["id"]
+    _cache_set(cache_key, tid)
+    return tid
+
+
+def get_stats_mlb(team_name: str) -> Optional[Dict]:
+    """Returns {rpg, rapg} (runs per game scored/allowed) for an MLB team."""
+    cache_key = f"mlb_stats_{team_name.lower()}"
+    cached = _cache_get(cache_key)
+    if cached is not None:
+        return cached
+
+    team_id = _buscar_team_id_mlb(team_name)
+    if not team_id:
+        _cache_set(cache_key, None)
+        return None
+
+    data = _get(
+        "https://v1.baseball.api-sports.io", "teams/statistics",
+        {"league": MLB_LEAGUE, "season": MLB_SEASON, "team": team_id},
+    )
+    if not data or not data.get("response"):
+        _cache_set(cache_key, None)
+        return None
+
+    r = data["response"]
+    runs_for = r.get("runs", {}).get("for", {})
+    runs_against = r.get("runs", {}).get("against", {})
+    rpg = runs_for.get("average") or runs_for.get("total")
+    rapg = runs_against.get("average") or runs_against.get("total")
+
+    if rpg is None or rapg is None:
+        _cache_set(cache_key, None)
+        return None
+
+    result = {"rpg": float(rpg), "rapg": float(rapg)}
+    _cache_set(cache_key, result)
+    return result
+
 
 def get_standings_mlb() -> Optional[List[Dict]]:
     """Returns list of {name, win_pct} for MLB teams."""

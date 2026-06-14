@@ -72,10 +72,11 @@ def _mejor_pick_evento(evento, deporte) -> Optional[PickOutput]:
             probs = prob_implicita_sin_margen(cuota_hv, cuota_av, cuota_dv)
             prob_home, prob_away = probs["local"], probs["visitante"]
 
-        p = _make_pick(deporte, liga, home, home, cuota_hv, prob_home, bk_h)
+        partido = f"{home} vs {away}"
+        p = _make_pick(deporte, liga, partido, f"Gana {home}", cuota_hv, prob_home, bk_h)
         if p:
             candidatos.append(p)
-        p = _make_pick(deporte, liga, away, away, cuota_av, prob_away, bk_a)
+        p = _make_pick(deporte, liga, partido, f"Gana {away}", cuota_av, prob_away, bk_a)
         if p:
             candidatos.append(p)
 
