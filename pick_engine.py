@@ -54,14 +54,17 @@ def _make_pick(deporte, liga, equipo, tipo, cuota, prob, bk) -> Optional[PickOut
         bookmaker_ref=bk.capitalize(),
     )
 
-def _mejor_pick_evento(evento, deporte) -> Optional[PickOutput]:
+def _mejores_picks_evento(evento, deporte) -> List[PickOutput]:
+    """Returns best H2H pick + best total pick separately so both compete globally."""
     mejores = extraer_mejores_cuotas(evento)
     h2h = mejores["h2h"]
     totals = mejores["totals"]
     home = evento.get("home_team", "")
     away = evento.get("away_team", "")
     liga = evento.get("_liga_nombre", deporte.upper())
-    candidatos: List[PickOutput] = []
+    partido = f"{home} vs {away}"
+    h2h_candidatos: List[PickOutput] = []
+    total_candidatos: List[PickOutput] = []
 
     cuota_h = h2h.get(home)
     cuota_a = h2h.get(away)
@@ -72,8 +75,6 @@ def _mejor_pick_evento(evento, deporte) -> Optional[PickOutput]:
         cuota_av, bk_a = cuota_a
         cuota_dv = cuota_d[0] if cuota_d else None
 
-        # Use independent statistical model when available (real edge).
-        # Fall back to market-derived probabilities only if model fails.
         pred = predecir(home, away, deporte)
         if pred:
             prob_home = pred["home"]
@@ -84,18 +85,14 @@ def _mejor_pick_evento(evento, deporte) -> Optional[PickOutput]:
             prob_home, prob_away = probs["local"], probs["visitante"]
             prob_draw = 0
 
-        # Skip H2H picks when draw probability is too high (too uncertain)
         draw_limit = 0.30 if deporte in ("futbol", "mundial", "champions") else 0
-        if prob_draw > draw_limit:
-            pass  # don't add H2H picks, totals still evaluated below
-        else:
-            partido = f"{home} vs {away}"
+        if prob_draw <= draw_limit:
             p = _make_pick(deporte, liga, partido, f"Gana {home}", cuota_hv, prob_home, bk_h)
             if p:
-                candidatos.append(p)
+                h2h_candidatos.append(p)
             p = _make_pick(deporte, liga, partido, f"Gana {away}", cuota_av, prob_away, bk_a)
-        if p:
-            candidatos.append(p)
+            if p:
+                h2h_candidatos.append(p)
 
     if deporte in DEPORTES_CON_TOTALS:
         puntos_vistos = set()
@@ -123,26 +120,21 @@ def _mejor_pick_evento(evento, deporte) -> Optional[PickOutput]:
             else:
                 probs_t = prob_implicita_sin_margen(cuota_ov, cuota_uv)
                 prob_over, prob_under = probs_t["local"], probs_t["visitante"]
-            partido = f"{home} vs {away}"
+
             p_over = _make_pick(deporte, liga, partido, f"Over {punto}", cuota_ov, prob_over, bk_ov)
             p_under = _make_pick(deporte, liga, partido, f"Under {punto}", cuota_uv, prob_under, bk_uv)
-
-            mejor_total = None
-            if p_over and p_under:
-                mejor_total = p_over if p_over.edge >= p_under.edge else p_under
-            elif p_over:
-                mejor_total = p_over
-            elif p_under:
-                mejor_total = p_under
-
-            if mejor_total:
-                candidatos.append(mejor_total)
+            if p_over:
+                total_candidatos.append(p_over)
+            if p_under:
+                total_candidatos.append(p_under)
             puntos_vistos.add(punto)
 
-    if not candidatos:
-        return None
-
-    return max(candidatos, key=lambda p: p.edge)
+    result = []
+    if h2h_candidatos:
+        result.append(max(h2h_candidatos, key=lambda p: p.edge))
+    if total_candidatos:
+        result.append(max(total_candidatos, key=lambda p: p.edge))
+    return result
 
 def generar_picks_diarios() -> List[PickOutput]:
     """Selecciona los 4 mejores picks del día cruzando todos los deportes disponibles."""
@@ -152,7 +144,7 @@ def generar_picks_diarios() -> List[PickOutput]:
 
     def _fetch_deporte(deporte: str) -> List[PickOutput]:
         eventos = obtener_cuotas(deporte, hoy_utc=hoy_utc)
-        return [p for e in eventos for p in [_mejor_pick_evento(e, deporte)] if p is not None]
+        return [p for e in eventos for p in _mejores_picks_evento(e, deporte)]
 
     with ThreadPoolExecutor(max_workers=len(SPORTS_ODDSAPI)) as pool:
         futures = {pool.submit(_fetch_deporte, d): d for d in SPORTS_ODDSAPI}
@@ -197,8 +189,7 @@ def generar_picks(deporte: str) -> List[PickOutput]:
     estado = cargar_estado()
     eventos = obtener_cuotas(deporte)
 
-    candidatos = [_mejor_pick_evento(e, deporte) for e in eventos]
-    candidatos = [p for p in candidatos if p is not None]
+    candidatos = [p for e in eventos for p in _mejores_picks_evento(e, deporte)]
     candidatos.sort(key=lambda p: p.edge, reverse=True)
 
     validos = [p for p in candidatos if p.edge >= EDGE_MIN and p.prob_modelo >= PROB_MIN]
