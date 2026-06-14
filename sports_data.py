@@ -331,8 +331,8 @@ def get_stats_mlb(team_name: str) -> Optional[Dict]:
     r = data["response"]
     runs_for = r.get("runs", {}).get("for", {})
     runs_against = r.get("runs", {}).get("against", {})
-    rpg = runs_for.get("average") or runs_for.get("total")
-    rapg = runs_against.get("average") or runs_against.get("total")
+    rpg = runs_for.get("average")
+    rapg = runs_against.get("average")
 
     if rpg is None or rapg is None:
         _cache_set(cache_key, None)

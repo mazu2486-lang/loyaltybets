@@ -139,15 +139,24 @@ def _resultado_mlb(pick: Dict, fecha: str) -> Optional[str]:
         _cache_set(cache_key, games)
 
     equipo = pick.get("equipo", "")
+    tipo = pick.get("tipo_apuesta", "")
 
     for g in games:
         teams = g.get("teams", {})
         h_name = teams.get("home", {}).get("name", "")
         a_name = teams.get("away", {}).get("name", "")
-        home_ok = _coincide(h_name, equipo)
-        away_ok = _coincide(a_name, equipo)
-        if not (home_ok or away_ok):
-            continue
+
+        if " vs " in equipo:
+            partes = equipo.split(" vs ")
+            home_ok = _coincide(h_name, partes[0]) or _coincide(a_name, partes[0])
+            away_ok = _coincide(h_name, partes[1]) or _coincide(a_name, partes[1])
+            if not (home_ok and away_ok):
+                continue
+        else:
+            home_ok = _coincide(h_name, equipo)
+            away_ok = _coincide(a_name, equipo)
+            if not (home_ok or away_ok):
+                continue
 
         if g.get("status", {}).get("short") != "FT":
             return None
@@ -156,7 +165,21 @@ def _resultado_mlb(pick: Dict, fecha: str) -> Optional[str]:
         sh = scores.get("home", {}).get("total") or 0
         sa = scores.get("away", {}).get("total") or 0
 
-        return "ganado" if (home_ok and sh > sa) or (away_ok and sa > sh) else "perdido"
+        if "Over" in tipo:
+            linea = float(tipo.split()[1])
+            return "ganado" if (sh + sa) > linea else "perdido"
+        if "Under" in tipo:
+            linea = float(tipo.split()[1])
+            return "ganado" if (sh + sa) < linea else "perdido"
+
+        if tipo.startswith("Gana "):
+            equipo_apostado = tipo[5:].strip()
+        else:
+            equipo_apostado = equipo
+        if _coincide(h_name, equipo_apostado):
+            return "ganado" if sh > sa else "perdido"
+        else:
+            return "ganado" if sa > sh else "perdido"
 
     return None
 
@@ -178,6 +201,7 @@ def verificar_picks_fecha(fecha: str) -> Dict:
         "champions": _resultado_futbol,
         "basquet":   _resultado_basquet,
         "mlb":       _resultado_mlb,
+        "tenis":     lambda p, f: None,  # no ATP results API — stays pending
     }
 
     actualizados = []

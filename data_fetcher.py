@@ -14,7 +14,7 @@ SPORTS_ODDSAPI = {
     "futbol":    "soccer_epl",
     "basquet":   "basketball_nba",
     "mlb":       "baseball_mlb",
-    "tenis":     "tennis_atp_french_open",
+    "tenis":     "tennis_atp_wimbledon",
 }
 
 def obtener_fecha_utc_real() -> date:
