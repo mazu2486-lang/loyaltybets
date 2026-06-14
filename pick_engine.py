@@ -11,6 +11,7 @@ from predictor import predecir, predecir_total
 
 CUOTA_MIN = 1.30
 CUOTA_MAX = 3.50
+MLB_TOTAL_MAX = 9.5  # ignore MLB totals above this line (too volatile)
 EDGE_MIN = 0.04
 PROB_MIN = 0.54
 PICKS_DIARIOS = 7
@@ -109,6 +110,13 @@ def _mejores_picks_evento(evento, deporte) -> List[PickOutput]:
             cuota_under = totals.get(under_label)
             if not cuota_over or not cuota_under:
                 continue
+            # Skip MLB totals above the volatile threshold
+            try:
+                if deporte == "mlb" and float(punto) > MLB_TOTAL_MAX:
+                    puntos_vistos.add(punto)
+                    continue
+            except (ValueError, TypeError):
+                pass
             cuota_ov, bk_ov = cuota_over
             cuota_uv, bk_uv = cuota_under
             try:
@@ -173,24 +181,32 @@ def generar_picks_diarios() -> List[PickOutput]:
     ]
     fallbacks = [p for p in todos_candidatos if p not in validos]
 
+    MAX_POR_DEPORTE = 2
     seleccionados: List[PickOutput] = []
     exposicion = 0.0
+    conteo_deporte: Dict[str, int] = {}
 
     for pick in validos:
         if len(seleccionados) >= PICKS_DIARIOS or exposicion >= EXPOSICION_MAX:
             break
+        if conteo_deporte.get(pick.deporte, 0) >= MAX_POR_DEPORTE:
+            continue
         u = calcular_unidades(pick.edge, estado)
         if u > 0 and (exposicion + u) <= EXPOSICION_MAX:
             pick.unidades = u
             seleccionados.append(pick)
             exposicion += u
+            conteo_deporte[pick.deporte] = conteo_deporte.get(pick.deporte, 0) + 1
 
     for pick in fallbacks:
         if len(seleccionados) >= PICKS_DIARIOS:
             break
+        if conteo_deporte.get(pick.deporte, 0) >= MAX_POR_DEPORTE:
+            continue
         pick.unidades = 0.5
         pick.semaforo = "🟡"
         seleccionados.append(pick)
+        conteo_deporte[pick.deporte] = conteo_deporte.get(pick.deporte, 0) + 1
 
     return seleccionados
 
