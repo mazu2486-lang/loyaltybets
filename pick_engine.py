@@ -22,11 +22,11 @@ EXPOSICION_MAX = 14.0
 # Football markets are more efficient — require higher edge threshold
 EDGE_MIN_POR_DEPORTE = {
     "futbol": 0.06, "mundial": 0.06, "champions": 0.06,
-    "basquet": 0.05, "mlb": 0.07, "tenis": 0.05,
+    "basquet": 0.05, "mlb": 0.07,
 }
 PROB_MIN_POR_DEPORTE = {
     "futbol": 0.57, "mundial": 0.57, "champions": 0.57,
-    "basquet": 0.55, "mlb": 0.58, "tenis": 0.55,
+    "basquet": 0.55, "mlb": 0.58,
 }
 
 def asignar_semaforo(edge: float) -> str:

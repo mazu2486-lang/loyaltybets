@@ -13,7 +13,7 @@ from data_fetcher import obtener_fecha_utc_real
 
 app = FastAPI(title="LoyaltyBet Pick Engine", version="3.0.0")
 
-Deporte = Literal["futbol", "mundial", "champions", "basquet", "mlb", "tenis"]
+Deporte = Literal["futbol", "mundial", "champions", "basquet", "mlb"]
 
 
 @app.get("/health")

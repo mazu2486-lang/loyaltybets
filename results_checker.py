@@ -201,7 +201,6 @@ def verificar_picks_fecha(fecha: str) -> Dict:
         "champions": _resultado_futbol,
         "basquet":   _resultado_basquet,
         "mlb":       _resultado_mlb,
-        "tenis":     lambda p, f: None,  # no ATP results API — stays pending
     }
 
     actualizados = []
