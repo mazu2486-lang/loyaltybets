@@ -22,11 +22,11 @@ EXPOSICION_MAX = 14.0
 # Football markets are more efficient — require higher edge threshold
 EDGE_MIN_POR_DEPORTE = {
     "futbol": 0.06, "mundial": 0.06, "champions": 0.06,
-    "basquet": 0.04, "mlb": 0.04, "tenis": 0.04,
+    "basquet": 0.05, "mlb": 0.07, "tenis": 0.05,
 }
 PROB_MIN_POR_DEPORTE = {
     "futbol": 0.57, "mundial": 0.57, "champions": 0.57,
-    "basquet": 0.54, "mlb": 0.54, "tenis": 0.54,
+    "basquet": 0.55, "mlb": 0.58, "tenis": 0.55,
 }
 
 def asignar_semaforo(edge: float) -> str:
@@ -181,32 +181,24 @@ def generar_picks_diarios() -> List[PickOutput]:
     ]
     fallbacks = [p for p in todos_candidatos if p not in validos]
 
-    MAX_POR_DEPORTE = 2
     seleccionados: List[PickOutput] = []
     exposicion = 0.0
-    conteo_deporte: Dict[str, int] = {}
 
     for pick in validos:
         if len(seleccionados) >= PICKS_DIARIOS or exposicion >= EXPOSICION_MAX:
             break
-        if conteo_deporte.get(pick.deporte, 0) >= MAX_POR_DEPORTE:
-            continue
         u = calcular_unidades(pick.edge, estado)
         if u > 0 and (exposicion + u) <= EXPOSICION_MAX:
             pick.unidades = u
             seleccionados.append(pick)
             exposicion += u
-            conteo_deporte[pick.deporte] = conteo_deporte.get(pick.deporte, 0) + 1
 
     for pick in fallbacks:
         if len(seleccionados) >= PICKS_DIARIOS:
             break
-        if conteo_deporte.get(pick.deporte, 0) >= MAX_POR_DEPORTE:
-            continue
         pick.unidades = 0.5
         pick.semaforo = "🟡"
         seleccionados.append(pick)
-        conteo_deporte[pick.deporte] = conteo_deporte.get(pick.deporte, 0) + 1
 
     return seleccionados
 
