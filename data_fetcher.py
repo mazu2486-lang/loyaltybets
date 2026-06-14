@@ -56,6 +56,14 @@ def evento_es_hoy(commence_time_iso: str, hoy_utc: date) -> bool:
     except Exception:
         return False
 
+def evento_tiene_margen(commence_time_iso: str, horas_min: float = 2.0) -> bool:
+    try:
+        dt = datetime.fromisoformat(commence_time_iso.replace("Z", "+00:00"))
+        ahora = datetime.now(timezone.utc)
+        return (dt - ahora).total_seconds() >= horas_min * 3600
+    except Exception:
+        return True
+
 def obtener_cuotas(deporte: str, hoy_utc=None) -> List[Dict]:
     sport_key = SPORTS_ODDSAPI.get(deporte)
     if not sport_key or not ODDS_API_KEY:
@@ -79,9 +87,13 @@ def obtener_cuotas(deporte: str, hoy_utc=None) -> List[Dict]:
         return []
 
     todos = resp.json()
-    hoy_filtrados = [e for e in todos if evento_es_hoy(e.get("commence_time", ""), hoy_utc)]
+    hoy_filtrados = [
+        e for e in todos
+        if evento_es_hoy(e.get("commence_time", ""), hoy_utc)
+        and evento_tiene_margen(e.get("commence_time", ""))
+    ]
 
-    print(f"[OddsAPI] {deporte}: {len(todos)} eventos totales, {len(hoy_filtrados)} hoy ({hoy_utc})")
+    print(f"[OddsAPI] {deporte}: {len(todos)} eventos totales, {len(hoy_filtrados)} con margen ≥2h ({hoy_utc})")
     return hoy_filtrados
 
 def extraer_mejores_cuotas(evento_odds: Dict) -> Dict:
