@@ -213,12 +213,12 @@ def get_h2h_futbol(home: str, away: str) -> Optional[Dict]:
     return result
 
 
-def get_stats_futbol(team_name: str) -> Optional[Dict]:
+def get_stats_futbol(team_name: str, league_id: int = FOOTBALL_LEAGUE, season: int = FOOTBALL_SEASON) -> Optional[Dict]:
     """
     Returns {"goals_for": float, "goals_against": float} averaged per game
-    for the current Premier League season.
+    for the given league/season. Defaults to Premier League.
     """
-    cache_key = f"fb_stats_{team_name.lower()}"
+    cache_key = f"fb_stats_{team_name.lower()}_{league_id}_{season}"
     cached = _cache_get(cache_key)
     if cached is not None:
         return cached
@@ -230,7 +230,7 @@ def get_stats_futbol(team_name: str) -> Optional[Dict]:
 
     data = _get(
         "https://v3.football.api-sports.io", "teams/statistics",
-        {"league": FOOTBALL_LEAGUE, "season": FOOTBALL_SEASON, "team": team_id},
+        {"league": league_id, "season": season, "team": team_id},
     )
     if not data or not data.get("response"):
         _cache_set(cache_key, None)

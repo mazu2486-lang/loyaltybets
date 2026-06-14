@@ -13,7 +13,16 @@ from typing import Dict, Optional, List
 from sports_data import (
     get_stats_futbol, get_standings_basquet, get_standings_mlb, get_stats_mlb,
     similitud, get_forma_reciente_futbol, get_h2h_futbol,
+    FOOTBALL_LEAGUE, FOOTBALL_SEASON,
+    WORLD_CUP_LEAGUE, WORLD_CUP_SEASON,
+    CHAMPIONS_LEAGUE, CHAMPIONS_SEASON,
 )
+
+_FUTBOL_LEAGUES = {
+    "futbol":    (FOOTBALL_LEAGUE,  FOOTBALL_SEASON),
+    "mundial":   (WORLD_CUP_LEAGUE, WORLD_CUP_SEASON),
+    "champions": (CHAMPIONS_LEAGUE, CHAMPIONS_SEASON),
+}
 
 LEAGUE_AVG_GOALS = 2.65      # Premier League goals/game (both teams combined)
 HOME_FACTOR_FUTBOL = 1.12    # home teams score ~12% more on average
@@ -73,9 +82,10 @@ def _buscar_en_standings(name: str, standings: List[Dict]) -> Optional[Dict]:
 
 # ── Models ────────────────────────────────────────────────────────────────────
 
-def predecir_futbol(home: str, away: str) -> Optional[Dict]:
-    stats_h = get_stats_futbol(home)
-    stats_a = get_stats_futbol(away)
+def predecir_futbol(home: str, away: str, deporte: str = "futbol") -> Optional[Dict]:
+    league_id, season = _FUTBOL_LEAGUES.get(deporte, (FOOTBALL_LEAGUE, FOOTBALL_SEASON))
+    stats_h = get_stats_futbol(home, league_id, season)
+    stats_a = get_stats_futbol(away, league_id, season)
     if not stats_h or not stats_a:
         return None
 
@@ -166,10 +176,11 @@ def _normal_prob_over(expected: float, std: float, linea: float) -> float:
     return round(0.5 * (1 - math.erf(z)), 4)
 
 
-def predecir_total_futbol(home: str, away: str, linea: float) -> Optional[Dict]:
+def predecir_total_futbol(home: str, away: str, linea: float, deporte: str = "futbol") -> Optional[Dict]:
     """P(Over/Under linea goals) using Poisson model."""
-    stats_h = get_stats_futbol(home)
-    stats_a = get_stats_futbol(away)
+    league_id, season = _FUTBOL_LEAGUES.get(deporte, (FOOTBALL_LEAGUE, FOOTBALL_SEASON))
+    stats_h = get_stats_futbol(home, league_id, season)
+    stats_a = get_stats_futbol(away, league_id, season)
     if not stats_h or not stats_a:
         return None
 
@@ -238,8 +249,8 @@ def predecir_total_mlb(home: str, away: str, linea: float) -> Optional[Dict]:
 def predecir(home: str, away: str, sport: str) -> Optional[Dict]:
     """H2H model probabilities. Returns None → fallback to market probs."""
     try:
-        if sport == "futbol":
-            return predecir_futbol(home, away)
+        if sport in ("futbol", "mundial", "champions"):
+            return predecir_futbol(home, away, sport)
         if sport == "basquet":
             return predecir_basquet(home, away)
         if sport == "mlb":
@@ -252,8 +263,8 @@ def predecir(home: str, away: str, sport: str) -> Optional[Dict]:
 def predecir_total(home: str, away: str, sport: str, linea: float) -> Optional[Dict]:
     """Totals model probabilities. Returns None → fallback to market probs."""
     try:
-        if sport == "futbol":
-            return predecir_total_futbol(home, away, linea)
+        if sport in ("futbol", "mundial", "champions"):
+            return predecir_total_futbol(home, away, linea, sport)
         if sport == "basquet":
             return predecir_total_basquet(home, away, linea)
         if sport == "mlb":
