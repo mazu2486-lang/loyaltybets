@@ -99,6 +99,44 @@ def _get(base_url: str, endpoint: str, params: Dict) -> Optional[Dict]:
 
 # ── Football ─────────────────────────────────────────────────────────────────
 
+def get_forma_reciente_futbol(team_name: str) -> float:
+    """Returns a form multiplier [0.85, 1.15] based on points earned in last 5 games."""
+    team_id = _buscar_team_id_futbol(team_name)
+    if not team_id:
+        return 1.0
+
+    cache_key = f"fb_forma_{team_name.lower()}"
+    cached = _cache_get(cache_key)
+    if cached is not None:
+        return cached
+
+    data = _get("https://v3.football.api-sports.io", "fixtures", {"team": team_id, "last": 5})
+    if not data or not data.get("response"):
+        _cache_set(cache_key, 1.0)
+        return 1.0
+
+    puntos = 0
+    partidos = 0
+    for f in data["response"]:
+        status = f.get("fixture", {}).get("status", {}).get("short", "")
+        if status not in ("FT", "AET", "PEN"):
+            continue
+        teams = f.get("teams", {})
+        goals = f.get("goals", {})
+        gh = goals.get("home") or 0
+        ga = goals.get("away") or 0
+        es_local = teams.get("home", {}).get("id") == team_id
+        if es_local:
+            puntos += 3 if gh > ga else (1 if gh == ga else 0)
+        else:
+            puntos += 3 if ga > gh else (1 if gh == ga else 0)
+        partidos += 1
+
+    factor = 0.85 + (puntos / (partidos * 3)) * 0.30 if partidos > 0 else 1.0
+    _cache_set(cache_key, factor)
+    return factor
+
+
 def _buscar_team_id_futbol(name: str) -> Optional[int]:
     cache_key = f"fb_id_{name.lower()}"
     cached = _cache_get(cache_key)

@@ -12,6 +12,7 @@ import math
 from typing import Dict, Optional, List
 from sports_data import (
     get_stats_futbol, get_standings_basquet, get_standings_mlb, similitud,
+    get_forma_reciente_futbol,
 )
 
 LEAGUE_AVG_GOALS = 2.65      # Premier League goals/game (both teams combined)
@@ -29,11 +30,24 @@ def _poisson_pmf(k: int, lam: float) -> float:
     return (lam ** k) * math.exp(-lam) / math.factorial(k)
 
 
+def _dc_tau(x: int, y: int, lam_h: float, lam_a: float, rho: float = -0.13) -> float:
+    """Dixon-Coles correction for low-score results (reduces Poisson bias)."""
+    if x == 0 and y == 0:
+        return 1 - lam_h * lam_a * rho
+    if x == 0 and y == 1:
+        return 1 + lam_h * rho
+    if x == 1 and y == 0:
+        return 1 + lam_a * rho
+    if x == 1 and y == 1:
+        return 1 - rho
+    return 1.0
+
+
 def _probs_poisson(lam_h: float, lam_a: float) -> tuple:
     p_home = p_draw = p_away = 0.0
-    for i in range(8):
-        for j in range(8):
-            p = _poisson_pmf(i, lam_h) * _poisson_pmf(j, lam_a)
+    for i in range(10):
+        for j in range(10):
+            p = _poisson_pmf(i, lam_h) * _poisson_pmf(j, lam_a) * _dc_tau(i, j, lam_h, lam_a)
             if i > j:
                 p_home += p
             elif i == j:
@@ -41,6 +55,13 @@ def _probs_poisson(lam_h: float, lam_a: float) -> tuple:
             else:
                 p_away += p
     return p_home, p_draw, p_away
+
+
+def _log5(wp_a: float, wp_b: float) -> float:
+    """Bill James log5 — more accurate than simple ratio for win probability."""
+    num = wp_a - wp_a * wp_b
+    den = wp_a + wp_b - 2 * wp_a * wp_b
+    return num / den if den > 0 else 0.5
 
 
 def _buscar_en_standings(name: str, standings: List[Dict]) -> Optional[Dict]:
@@ -58,7 +79,7 @@ def predecir_futbol(home: str, away: str) -> Optional[Dict]:
     if not stats_h or not stats_a:
         return None
 
-    league_avg = LEAGUE_AVG_GOALS / 2  # per team per game
+    league_avg = LEAGUE_AVG_GOALS / 2
 
     atk_h = stats_h["goals_for"] / league_avg
     def_h = stats_h["goals_against"] / league_avg
@@ -67,6 +88,10 @@ def predecir_futbol(home: str, away: str) -> Optional[Dict]:
 
     lam_h = atk_h * def_a * league_avg * HOME_FACTOR_FUTBOL
     lam_a = atk_a * def_h * league_avg
+
+    # Adjust by recent form (last 5 games)
+    lam_h *= get_forma_reciente_futbol(home)
+    lam_a *= get_forma_reciente_futbol(away)
 
     p_home, p_draw, p_away = _probs_poisson(lam_h, lam_a)
     total = p_home + p_draw + p_away
@@ -92,13 +117,11 @@ def predecir_basquet(home: str, away: str) -> Optional[Dict]:
 
     wp_h = min(th["win_pct"] + HOME_EDGE_BASQUET, 0.99)
     wp_a = ta["win_pct"]
-    total = wp_h + wp_a
-    if total <= 0:
-        return None
+    prob_home = _log5(wp_h, wp_a)
 
     return {
-        "home": round(wp_h / total, 4),
-        "away": round(wp_a / total, 4),
+        "home": round(prob_home, 4),
+        "away": round(1 - prob_home, 4),
     }
 
 
@@ -144,6 +167,8 @@ def predecir_total_futbol(home: str, away: str, linea: float) -> Optional[Dict]:
     league_avg = LEAGUE_AVG_GOALS / 2
     lam_h = (stats_h["goals_for"] / league_avg) * (stats_a["goals_against"] / league_avg) * league_avg * HOME_FACTOR_FUTBOL
     lam_a = (stats_a["goals_for"] / league_avg) * (stats_h["goals_against"] / league_avg) * league_avg
+    lam_h *= get_forma_reciente_futbol(home)
+    lam_a *= get_forma_reciente_futbol(away)
 
     prob_over = 0.0
     for i in range(15):
@@ -165,8 +190,9 @@ def predecir_total_basquet(home: str, away: str, linea: float) -> Optional[Dict]
     if not th or not ta:
         return None
 
-    exp_home = (th["ppg"] + ta["papg"]) / 2
-    exp_away = (ta["ppg"] + th["papg"]) / 2
+    # Weight own offense (60%) vs opponent defense (40%) — offense more predictive in NBA
+    exp_home = th["ppg"] * 0.6 + ta["papg"] * 0.4
+    exp_away = ta["ppg"] * 0.6 + th["papg"] * 0.4
     expected_total = exp_home + exp_away
 
     prob_over = _normal_prob_over(expected_total, NBA_TOTAL_STD, linea)
