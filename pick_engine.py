@@ -40,10 +40,6 @@ def _make_pick(deporte, liga, equipo, tipo, cuota, prob, bk) -> Optional[PickOut
     if not (CUOTA_MIN <= cuota <= CUOTA_MAX):
         return None
     edge = calcular_edge(prob, cuota)
-    edge_min = EDGE_MIN_POR_DEPORTE.get(deporte, EDGE_MIN)
-    prob_min = PROB_MIN_POR_DEPORTE.get(deporte, PROB_MIN)
-    if edge < edge_min or prob < prob_min:
-        return None
     return PickOutput(
         deporte=deporte,
         liga=liga,
@@ -168,7 +164,11 @@ def generar_picks_diarios() -> List[PickOutput]:
 
     todos_candidatos.sort(key=lambda p: p.edge, reverse=True)
 
-    validos = [p for p in todos_candidatos if p.edge >= EDGE_MIN and p.prob_modelo >= PROB_MIN]
+    validos = [
+        p for p in todos_candidatos
+        if p.edge >= EDGE_MIN_POR_DEPORTE.get(p.deporte, EDGE_MIN)
+        and p.prob_modelo >= PROB_MIN_POR_DEPORTE.get(p.deporte, PROB_MIN)
+    ]
     fallbacks = [p for p in todos_candidatos if p not in validos]
 
     seleccionados: List[PickOutput] = []
