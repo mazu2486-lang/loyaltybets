@@ -11,6 +11,7 @@ CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 _ICONO_DEPORTE = {"futbol": "⚽", "mundial": "🏆", "champions": "⭐", "basquet": "🏀", "mlb": "⚾", "tenis": "🎾"}
 _LIGA_NOMBRE   = {"futbol": "Premier League", "mundial": "Mundial FIFA 2026", "champions": "Champions League", "basquet": "NBA", "tenis": "ATP", "mlb": "MLB"}
 _TIPO_LABEL    = {"express": "⚡ EXPRESS", "normal": "🔥 COMBINADA", "acumulada": "🎰 ACUMULADA"}
+_TOTAL_LABEL   = {"futbol": "goles", "mundial": "goles", "champions": "goles", "basquet": "puntos", "mlb": "carreras", "tenis": "games"}
 
 def _icono(deporte: str) -> str:
     return _ICONO_DEPORTE.get(deporte, "🎯")
@@ -68,6 +69,11 @@ def formatear_combinada(combinada: Combinada) -> str:
 def _pie_aviso() -> str:
     return (
         "━━━━━━━━━━━━━━━━━━━━━━\n"
+        "📖 *CÓMO LEER LOS PICKS:*\n"
+        "🟢 Alta confianza  🟡 Confianza media  🔴 Mayor cuota\n"
+        "_Cuota = multiplicador · Stake = % de tu capital_\n"
+        "_1u = 1% de tu banca · 0.5u = 0.5% de tu banca_\n"
+        "━━━━━━━━━━━━━━━━━━━━━━\n"
         "⚠️ *Recuerda apostar con responsabilidad.*\n"
         "_Solo lo que puedas perder. +18._\n"
         "━━━━━━━━━━━━━━━━━━━━━━"
@@ -79,28 +85,42 @@ def _pie_aviso() -> str:
 def _pick_compacto(pick: PickOutput, numero: int) -> str:
     icono = _icono(pick.deporte)
     if " vs " in pick.equipo:
-        equipo_txt, _ = pick.equipo.split(" vs ", 1)
+        equipo_txt, rival = pick.equipo.split(" vs ", 1)
     else:
         equipo_txt = pick.equipo
-    if "Over" in pick.tipo_apuesta or "Under" in pick.tipo_apuesta:
-        apuesta = pick.tipo_apuesta
+        rival = ""
+
+    unidad = _TOTAL_LABEL.get(pick.deporte, "puntos")
+    if "Over" in pick.tipo_apuesta:
+        linea = pick.tipo_apuesta.split()[1]
+        apuesta = f"Más de {linea} {unidad} en el partido"
+    elif "Under" in pick.tipo_apuesta:
+        linea = pick.tipo_apuesta.split()[1]
+        apuesta = f"Menos de {linea} {unidad} en el partido"
     else:
-        apuesta = f"Victoria {equipo_txt}"
+        apuesta = f"Gana {equipo_txt}"
+
+    retorno = round(pick.cuota * 10, 1)
     return (
-        f"{pick.semaforo} *PICK #{numero}* — {pick.liga}\n"
-        f"{icono} {equipo_txt}\n"
-        f"📌 {apuesta} · Cuota: *{pick.cuota}* · *{pick.unidades}u*\n"
+        f"{pick.semaforo} *PICK #{numero}* — {pick.liga} {icono}\n"
+        f"📍 *{equipo_txt}*{f' vs {rival}' if rival else ''}\n"
+        f"🎯 {apuesta}\n"
+        f"💵 Cuota *{pick.cuota}* · Stake *{pick.unidades}u*  _($10 → ${retorno})_\n"
     )
 
 
 def _combinadas_compacto(combinadas: List[Combinada]) -> str:
     if not combinadas:
         return ""
-    lineas = ["══════════════════════════"]
+    lineas = [
+        "══════════════════════════",
+        "🔗 *COMBINADAS* _— varios picks juntos, mayor ganancia:_",
+    ]
     for c in combinadas:
         label = _TIPO_LABEL.get(c.tipo, "🔥 COMBINADA")
         equipos = " + ".join(p.equipo.split(" vs ")[0] if " vs " in p.equipo else p.equipo for p in c.picks)
-        lineas.append(f"{label}: {equipos} @ *{c.cuota_combinada}* · *{c.unidades}u*")
+        retorno = round(c.cuota_combinada * 10, 1)
+        lineas.append(f"{label}: {equipos}\n   → Cuota *{c.cuota_combinada}* · *{c.unidades}u*  _($10 → ${retorno})_")
     lineas.append("══════════════════════════")
     return "\n".join(lineas)
 
