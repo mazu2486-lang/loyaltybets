@@ -12,7 +12,7 @@ import math
 from typing import Dict, Optional, List
 from sports_data import (
     get_stats_futbol, get_standings_basquet, get_standings_mlb, get_stats_mlb,
-    similitud, get_forma_reciente_futbol,
+    similitud, get_forma_reciente_futbol, get_h2h_futbol,
 )
 
 LEAGUE_AVG_GOALS = 2.65      # Premier League goals/game (both teams combined)
@@ -98,10 +98,21 @@ def predecir_futbol(home: str, away: str) -> Optional[Dict]:
     if total <= 0:
         return None
 
+    ph = p_home / total
+    pd = p_draw / total
+    pa = p_away / total
+
+    # Blend 70% Poisson + 30% H2H history when available
+    h2h = get_h2h_futbol(home, away)
+    if h2h:
+        ph = 0.70 * ph + 0.30 * h2h["home_wr"]
+        pd = 0.70 * pd + 0.30 * h2h["draw_r"]
+        pa = 0.70 * pa + 0.30 * h2h["away_wr"]
+
     return {
-        "home":  round(p_home / total, 4),
-        "draw":  round(p_draw / total, 4),
-        "away":  round(p_away / total, 4),
+        "home":  round(ph, 4),
+        "draw":  round(pd, 4),
+        "away":  round(pa, 4),
     }
 
 

@@ -159,6 +159,60 @@ def _buscar_team_id_futbol(name: str) -> Optional[int]:
     return tid
 
 
+def get_h2h_futbol(home: str, away: str) -> Optional[Dict]:
+    """
+    Returns H2H win rates from last 5 meetings between the two teams.
+    {"home_wr": float, "draw_r": float, "away_wr": float}
+    """
+    id_h = _buscar_team_id_futbol(home)
+    id_a = _buscar_team_id_futbol(away)
+    if not id_h or not id_a:
+        return None
+
+    cache_key = f"fb_h2h_{min(id_h,id_a)}_{max(id_h,id_a)}"
+    cached = _cache_get(cache_key)
+    if cached is not None:
+        return cached
+
+    data = _get("https://v3.football.api-sports.io", "fixtures/headtohead",
+                {"h2h": f"{id_h}-{id_a}", "last": 6})
+    if not data or not data.get("response"):
+        _cache_set(cache_key, None)
+        return None
+
+    wins_h = wins_a = draws = total = 0
+    for f in data["response"]:
+        status = f.get("fixture", {}).get("status", {}).get("short", "")
+        if status not in ("FT", "AET", "PEN"):
+            continue
+        teams = f.get("teams", {})
+        goals = f.get("goals", {})
+        gh = goals.get("home") or 0
+        ga = goals.get("away") or 0
+        fid_h = teams.get("home", {}).get("id")
+        if gh > ga:
+            if fid_h == id_h: wins_h += 1
+            else: wins_a += 1
+        elif ga > gh:
+            if fid_h == id_h: wins_a += 1
+            else: wins_h += 1
+        else:
+            draws += 1
+        total += 1
+
+    if total == 0:
+        _cache_set(cache_key, None)
+        return None
+
+    result = {
+        "home_wr": wins_h / total,
+        "draw_r":  draws  / total,
+        "away_wr": wins_a / total,
+    }
+    _cache_set(cache_key, result)
+    return result
+
+
 def get_stats_futbol(team_name: str) -> Optional[Dict]:
     """
     Returns {"goals_for": float, "goals_against": float} averaged per game

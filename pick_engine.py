@@ -18,6 +18,16 @@ MIN_PICKS = 4
 MAX_PICKS = 7
 EXPOSICION_MAX = 14.0
 
+# Football markets are more efficient — require higher edge threshold
+EDGE_MIN_POR_DEPORTE = {
+    "futbol": 0.06, "mundial": 0.06, "champions": 0.06,
+    "basquet": 0.04, "mlb": 0.04, "tenis": 0.04,
+}
+PROB_MIN_POR_DEPORTE = {
+    "futbol": 0.57, "mundial": 0.57, "champions": 0.57,
+    "basquet": 0.54, "mlb": 0.54, "tenis": 0.54,
+}
+
 def asignar_semaforo(edge: float) -> str:
     if edge >= 0.08:
         return "🟢"
@@ -30,6 +40,10 @@ def _make_pick(deporte, liga, equipo, tipo, cuota, prob, bk) -> Optional[PickOut
     if not (CUOTA_MIN <= cuota <= CUOTA_MAX):
         return None
     edge = calcular_edge(prob, cuota)
+    edge_min = EDGE_MIN_POR_DEPORTE.get(deporte, EDGE_MIN)
+    prob_min = PROB_MIN_POR_DEPORTE.get(deporte, PROB_MIN)
+    if edge < edge_min or prob < prob_min:
+        return None
     return PickOutput(
         deporte=deporte,
         liga=liga,
@@ -68,15 +82,22 @@ def _mejor_pick_evento(evento, deporte) -> Optional[PickOutput]:
         if pred:
             prob_home = pred["home"]
             prob_away = pred["away"]
+            prob_draw = pred.get("draw", 0)
         else:
             probs = prob_implicita_sin_margen(cuota_hv, cuota_av, cuota_dv)
             prob_home, prob_away = probs["local"], probs["visitante"]
+            prob_draw = 0
 
-        partido = f"{home} vs {away}"
-        p = _make_pick(deporte, liga, partido, f"Gana {home}", cuota_hv, prob_home, bk_h)
-        if p:
-            candidatos.append(p)
-        p = _make_pick(deporte, liga, partido, f"Gana {away}", cuota_av, prob_away, bk_a)
+        # Skip H2H picks when draw probability is too high (too uncertain)
+        draw_limit = 0.30 if deporte in ("futbol", "mundial", "champions") else 0
+        if prob_draw > draw_limit:
+            pass  # don't add H2H picks, totals still evaluated below
+        else:
+            partido = f"{home} vs {away}"
+            p = _make_pick(deporte, liga, partido, f"Gana {home}", cuota_hv, prob_home, bk_h)
+            if p:
+                candidatos.append(p)
+            p = _make_pick(deporte, liga, partido, f"Gana {away}", cuota_av, prob_away, bk_a)
         if p:
             candidatos.append(p)
 
