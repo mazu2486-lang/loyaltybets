@@ -169,13 +169,15 @@ def generar_picks_diarios() -> List[PickOutput]:
 
     todos_candidatos.sort(key=lambda p: p.edge, reverse=True)
 
-    # Deduplicate: max 1 pick per game (highest edge wins per game)
-    partidos_vistos: set = set()
+    # Deduplicate: max 1 H2H + max 1 Total per game — both types compete independently
+    vistos: set = set()
     candidatos_unicos: List[PickOutput] = []
     for p in todos_candidatos:
         partido = p.equipo if " vs " in p.equipo else p.equipo
-        if partido not in partidos_vistos:
-            partidos_vistos.add(partido)
+        es_total = "Over" in p.tipo_apuesta or "Under" in p.tipo_apuesta or p.tipo_apuesta == "Empate"
+        clave = (partido, "total" if es_total else "h2h")
+        if clave not in vistos:
+            vistos.add(clave)
             candidatos_unicos.append(p)
     todos_candidatos = candidatos_unicos
 

@@ -8,22 +8,32 @@ CUOTA_ACUMULADA_MAX = 20.0
 
 
 def _picks_independientes(candidatos: List[PickOutput], n: int) -> List[PickOutput]:
-    """Selecciona n picks priorizando deportes distintos para mayor independencia."""
+    """Selecciona n picks de partidos distintos, priorizando deportes distintos."""
     seleccionados: List[PickOutput] = []
     deportes_usados: set = set()
+    partidos_usados: set = set()
 
+    def _partido(p: PickOutput) -> str:
+        return p.equipo if " vs " in p.equipo else p.equipo
+
+    # First pass: one pick per sport, one per game
     for pick in candidatos:
         if len(seleccionados) >= n:
             break
-        if pick.deporte not in deportes_usados:
+        partido = _partido(pick)
+        if pick.deporte not in deportes_usados and partido not in partidos_usados:
             seleccionados.append(pick)
             deportes_usados.add(pick.deporte)
+            partidos_usados.add(partido)
 
+    # Second pass: fill remaining slots (different game required)
     for pick in candidatos:
         if len(seleccionados) >= n:
             break
-        if pick not in seleccionados:
+        partido = _partido(pick)
+        if pick not in seleccionados and partido not in partidos_usados:
             seleccionados.append(pick)
+            partidos_usados.add(partido)
 
     return seleccionados
 
