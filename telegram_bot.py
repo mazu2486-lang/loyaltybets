@@ -97,6 +97,8 @@ def _pick_compacto(pick: PickOutput, numero: int) -> str:
     elif "Under" in pick.tipo_apuesta:
         linea = pick.tipo_apuesta.split()[1]
         apuesta = f"Menos de {linea} {unidad} en el partido"
+    elif pick.tipo_apuesta == "Empate":
+        apuesta = "Empate en el partido"
     elif pick.tipo_apuesta.startswith("Gana "):
         apuesta = pick.tipo_apuesta
     else:

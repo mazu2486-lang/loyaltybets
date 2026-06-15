@@ -93,6 +93,13 @@ def _mejores_picks_evento(evento, deporte) -> List[PickOutput]:
             if p:
                 h2h_candidatos.append(p)
 
+        # Draw pick — only for football; edge filter handles quality
+        if cuota_d and deporte == "mundial" and prob_draw > 0:
+            cuota_dv, bk_d = cuota_d
+            p = _make_pick(deporte, liga, partido, "Empate", cuota_dv, prob_draw, bk_d)
+            if p:
+                h2h_candidatos.append(p)
+
     if deporte in DEPORTES_CON_TOTALS:
         puntos_vistos = set()
         for label, (cuota_t, bk_t) in totals.items():

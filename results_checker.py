@@ -70,6 +70,8 @@ def _resultado_futbol(pick: Dict, fecha: str) -> Optional[str]:
         if "Under" in tipo:
             linea = float(tipo.split()[1])
             return "ganado" if (gh + ga) < linea else "perdido"
+        if tipo == "Empate":
+            return "ganado" if gh == ga else "perdido"
 
         # H2H — tipo_apuesta is "Gana {team}"
         if tipo.startswith("Gana "):

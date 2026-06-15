@@ -2,16 +2,16 @@
 Statistical probability models — independent from market odds.
 
 Football : Dixon-Coles simplified Poisson model using season averages.
-Basketball: Win-% adjusted Elo formula with home advantage.
-MLB       : Win-% ratio with home advantage.
-Tennis    : No model yet — falls back to market probabilities.
+           Falls back to FIFA ranking points for World Cup when stats unavailable.
+MLB      : Win-% ratio (Log5) with home advantage + recent form.
+           Totals adjusted by probable pitcher ERA + ballpark factor.
 
 Returns None on failure so pick_engine can fall back gracefully.
 """
 import math
 from typing import Dict, Optional, List
 from sports_data import (
-    get_stats_futbol, get_standings_basquet, get_standings_mlb, get_stats_mlb,
+    get_stats_futbol, get_standings_mlb, get_stats_mlb,
     similitud, get_forma_reciente_futbol, get_h2h_futbol,
     FOOTBALL_LEAGUE, FOOTBALL_SEASON,
     WORLD_CUP_LEAGUE, WORLD_CUP_SEASON,
@@ -24,11 +24,67 @@ _FUTBOL_LEAGUES = {
     "champions": (CHAMPIONS_LEAGUE, CHAMPIONS_SEASON),
 }
 
-LEAGUE_AVG_GOALS = 2.65      # Premier League goals/game (both teams combined)
-HOME_FACTOR_FUTBOL = 1.12    # home teams score ~12% more on average
-HOME_EDGE_BASQUET = 0.03     # NBA home teams win ~53% → add 3pp to home wp
-HOME_EDGE_MLB = 0.025        # MLB home teams win ~54%
-MIN_MATCH_SCORE = 0.50       # minimum name-similarity to accept a team match
+LEAGUE_AVG_GOALS = 2.65
+HOME_FACTOR_FUTBOL = 1.12
+HOME_EDGE_MLB = 0.025
+MIN_MATCH_SCORE = 0.50
+
+# FIFA ranking points (approximate June 2026) — used as fallback when WC stats unavailable
+FIFA_RANKING_POINTS = {
+    "argentina": 1900, "france": 1850, "england": 1800,
+    "brazil": 1780, "belgium": 1770, "portugal": 1750,
+    "spain": 1740, "netherlands": 1720, "germany": 1710,
+    "italy": 1700, "croatia": 1640, "uruguay": 1635,
+    "usa": 1615, "united states": 1615, "mexico": 1605,
+    "colombia": 1590, "senegal": 1585, "denmark": 1575,
+    "austria": 1565, "switzerland": 1555, "morocco": 1545,
+    "australia": 1538, "japan": 1532, "south korea": 1522,
+    "ecuador": 1515, "canada": 1505, "poland": 1498,
+    "nigeria": 1492, "peru": 1480, "chile": 1478,
+    "czech republic": 1468, "hungary": 1462, "scotland": 1458,
+    "slovakia": 1448, "turkey": 1442, "ukraine": 1438,
+    "cameroon": 1422, "ghana": 1418, "ivory coast": 1412,
+    "cote d'ivoire": 1412, "egypt": 1408, "algeria": 1402,
+    "iran": 1392, "south africa": 1382, "paraguay": 1372,
+    "venezuela": 1368, "panama": 1352, "costa rica": 1348,
+    "honduras": 1338, "jamaica": 1325, "new zealand": 1312,
+    "saudi arabia": 1308, "qatar": 1298, "indonesia": 1288,
+    "iraq": 1282, "curacao": 1180, "curaçao": 1180,
+}
+
+# MLB park run factors (home team's park inflates/deflates run totals)
+MLB_PARK_FACTORS = {
+    "colorado rockies": 1.150,
+    "cincinnati reds": 1.080,
+    "boston red sox": 1.055,
+    "philadelphia phillies": 1.040,
+    "texas rangers": 1.030,
+    "baltimore orioles": 1.020,
+    "chicago cubs": 1.010,
+    "new york yankees": 1.005,
+    "atlanta braves": 1.000,
+    "houston astros": 0.995,
+    "toronto blue jays": 0.995,
+    "washington nationals": 0.985,
+    "minnesota twins": 0.985,
+    "detroit tigers": 0.975,
+    "kansas city royals": 0.975,
+    "chicago white sox": 0.970,
+    "tampa bay rays": 0.960,
+    "miami marlins": 0.960,
+    "cleveland guardians": 0.958,
+    "st. louis cardinals": 0.958,
+    "milwaukee brewers": 0.950,
+    "pittsburgh pirates": 0.948,
+    "new york mets": 0.945,
+    "arizona diamondbacks": 0.945,
+    "los angeles angels": 0.943,
+    "seattle mariners": 0.940,
+    "los angeles dodgers": 0.932,
+    "athletics": 0.928,
+    "san diego padres": 0.920,
+    "san francisco giants": 0.910,
+}
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -40,7 +96,6 @@ def _poisson_pmf(k: int, lam: float) -> float:
 
 
 def _dc_tau(x: int, y: int, lam_h: float, lam_a: float, rho: float = -0.13) -> float:
-    """Dixon-Coles correction for low-score results (reduces Poisson bias)."""
     if x == 0 and y == 0:
         return 1 - lam_h * lam_a * rho
     if x == 0 and y == 1:
@@ -67,7 +122,6 @@ def _probs_poisson(lam_h: float, lam_a: float) -> tuple:
 
 
 def _log5(wp_a: float, wp_b: float) -> float:
-    """Bill James log5 — more accurate than simple ratio for win probability."""
     num = wp_a - wp_a * wp_b
     den = wp_a + wp_b - 2 * wp_a * wp_b
     return num / den if den > 0 else 0.5
@@ -80,13 +134,61 @@ def _buscar_en_standings(name: str, standings: List[Dict]) -> Optional[Dict]:
     return None
 
 
-# ── Models ────────────────────────────────────────────────────────────────────
+def _get_park_factor(home_team: str) -> float:
+    name = home_team.lower().strip()
+    for k, v in MLB_PARK_FACTORS.items():
+        if k in name or name in k:
+            return v
+    return 1.0
+
+
+def _best_fifa_pts(team: str) -> Optional[float]:
+    best_score = 0.0
+    best_pts = None
+    for key, pts in FIFA_RANKING_POINTS.items():
+        s = similitud(team, key)
+        if s > best_score:
+            best_score = s
+            best_pts = pts
+    return best_pts if best_score >= 0.55 else None
+
+
+def _fifa_prob(home: str, away: str) -> Optional[Dict]:
+    """Estimate H2H win probability using FIFA ranking points."""
+    h_pts = _best_fifa_pts(home)
+    a_pts = _best_fifa_pts(away)
+    if not h_pts or not a_pts:
+        return None
+
+    # Logistic ELO-style: +50 pts home advantage
+    diff = (h_pts - a_pts) + 50
+    prob_home_raw = 1 / (1 + 10 ** (-diff / 600))
+
+    # Draw estimation: higher when teams are evenly matched
+    closeness = 1 - abs(prob_home_raw - 0.5) * 2
+    prob_draw = 0.15 + closeness * 0.15  # [0.15, 0.30]
+
+    prob_home = prob_home_raw * (1 - prob_draw)
+    prob_away = (1 - prob_home_raw) * (1 - prob_draw)
+    total = prob_home + prob_draw + prob_away
+
+    return {
+        "home": round(prob_home / total, 4),
+        "draw": round(prob_draw / total, 4),
+        "away": round(prob_away / total, 4),
+    }
+
+
+# ── Football model ────────────────────────────────────────────────────────────
 
 def predecir_futbol(home: str, away: str, deporte: str = "futbol") -> Optional[Dict]:
     league_id, season = _FUTBOL_LEAGUES.get(deporte, (FOOTBALL_LEAGUE, FOOTBALL_SEASON))
     stats_h = get_stats_futbol(home, league_id, season)
     stats_a = get_stats_futbol(away, league_id, season)
+
     if not stats_h or not stats_a:
+        if deporte == "mundial":
+            return _fifa_prob(home, away)
         return None
 
     league_avg = LEAGUE_AVG_GOALS / 2
@@ -99,7 +201,6 @@ def predecir_futbol(home: str, away: str, deporte: str = "futbol") -> Optional[D
     lam_h = atk_h * def_a * league_avg * HOME_FACTOR_FUTBOL
     lam_a = atk_a * def_h * league_avg
 
-    # Adjust by recent form (last 5 games)
     lam_h *= get_forma_reciente_futbol(home)
     lam_a *= get_forma_reciente_futbol(away)
 
@@ -112,7 +213,6 @@ def predecir_futbol(home: str, away: str, deporte: str = "futbol") -> Optional[D
     pd = p_draw / total
     pa = p_away / total
 
-    # Blend 70% Poisson + 30% H2H history when available
     h2h = get_h2h_futbol(home, away)
     if h2h:
         ph = 0.70 * ph + 0.30 * h2h["home_wr"]
@@ -120,31 +220,13 @@ def predecir_futbol(home: str, away: str, deporte: str = "futbol") -> Optional[D
         pa = 0.70 * pa + 0.30 * h2h["away_wr"]
 
     return {
-        "home":  round(ph, 4),
-        "draw":  round(pd, 4),
-        "away":  round(pa, 4),
+        "home": round(ph, 4),
+        "draw": round(pd, 4),
+        "away": round(pa, 4),
     }
 
 
-def predecir_basquet(home: str, away: str) -> Optional[Dict]:
-    standings = get_standings_basquet()
-    if not standings:
-        return None
-
-    th = _buscar_en_standings(home, standings)
-    ta = _buscar_en_standings(away, standings)
-    if not th or not ta:
-        return None
-
-    wp_h = min(th["win_pct"] + HOME_EDGE_BASQUET, 0.99)
-    wp_a = ta["win_pct"]
-    prob_home = _log5(wp_h, wp_a)
-
-    return {
-        "home": round(prob_home, 4),
-        "away": round(1 - prob_home, 4),
-    }
-
+# ── MLB model ─────────────────────────────────────────────────────────────────
 
 def predecir_mlb(home: str, away: str) -> Optional[Dict]:
     standings = get_standings_mlb()
@@ -156,32 +238,105 @@ def predecir_mlb(home: str, away: str) -> Optional[Dict]:
     if not th or not ta:
         return None
 
-    wp_h = min(th["win_pct"] + HOME_EDGE_MLB, 0.99)
-    wp_a = ta["win_pct"]
-    prob_home = _log5(wp_h, wp_a)
+    wp_h_season = min(th["win_pct"] + HOME_EDGE_MLB, 0.99)
+    wp_a_season = ta["win_pct"]
 
+    try:
+        from mlb_stats import get_forma_reciente_mlb
+        forma_h = get_forma_reciente_mlb(home)
+        forma_a = get_forma_reciente_mlb(away)
+        # Convert form factor [0.88, 1.12] back to recent win rate [0, 1]
+        recent_wp_h = (forma_h - 0.88) / 0.24
+        recent_wp_a = (forma_a - 0.88) / 0.24
+        # Blend: 70% season win%, 30% last-10-games win%
+        wp_h = min(wp_h_season * 0.70 + recent_wp_h * 0.30, 0.99)
+        wp_a = wp_a_season * 0.70 + recent_wp_a * 0.30
+    except Exception:
+        wp_h = wp_h_season
+        wp_a = wp_a_season
+
+    prob_home = _log5(wp_h, wp_a)
     return {
         "home": round(prob_home, 4),
         "away": round(1 - prob_home, 4),
     }
 
 
-NBA_TOTAL_STD = 11.0   # NBA game total standard deviation ≈ 11 pts
-MLB_TOTAL_STD = 4.5    # MLB run total standard deviation ≈ 4.5 runs
+MLB_TOTAL_STD = 4.5
 
 
 def _normal_prob_over(expected: float, std: float, linea: float) -> float:
-    """P(X > linea) where X ~ Normal(expected, std)."""
     z = (linea - expected) / (std * math.sqrt(2))
     return round(0.5 * (1 - math.erf(z)), 4)
 
 
+def predecir_total_mlb(home: str, away: str, linea: float) -> Optional[Dict]:
+    """P(Over/Under linea runs) using rpg/rapg + pitcher ERA + ballpark factor."""
+    stats_h = get_stats_mlb(home)
+    stats_a = get_stats_mlb(away)
+
+    if stats_h and stats_a:
+        exp_home = stats_h["rpg"] * 0.6 + stats_a["rapg"] * 0.4
+        exp_away = stats_a["rpg"] * 0.6 + stats_h["rapg"] * 0.4
+    else:
+        standings = get_standings_mlb()
+        if not standings:
+            return None
+        th = _buscar_en_standings(home, standings)
+        ta = _buscar_en_standings(away, standings)
+        if not th or not ta:
+            return None
+        exp_home = 4.5 + (th["win_pct"] - 0.5) * 4
+        exp_away = 4.5 + (ta["win_pct"] - 0.5) * 4
+
+    # Adjust for probable pitchers (pitcher ERA → adjusts runs allowed)
+    try:
+        from mlb_stats import get_probable_pitchers, LEAGUE_ERA
+        pitchers = get_probable_pitchers(home, away)
+        if pitchers:
+            PITCHER_WEIGHT = 0.45  # pitcher influences ~45% of runs allowed
+            if pitchers.get("home_era"):
+                # Home pitcher faces away batters → affects exp_away
+                era_factor = LEAGUE_ERA / pitchers["home_era"]
+                exp_away = exp_away * (PITCHER_WEIGHT * era_factor + (1 - PITCHER_WEIGHT))
+            if pitchers.get("away_era"):
+                # Away pitcher faces home batters → affects exp_home
+                era_factor = LEAGUE_ERA / pitchers["away_era"]
+                exp_home = exp_home * (PITCHER_WEIGHT * era_factor + (1 - PITCHER_WEIGHT))
+    except Exception as e:
+        print(f"[predictor] pitcher adjustment: {e}")
+
+    # Park factor (home team's stadium)
+    park_f = _get_park_factor(home)
+    expected_total = (exp_home + exp_away) * park_f
+
+    prob_over = _normal_prob_over(expected_total, MLB_TOTAL_STD, linea)
+    return {"over": prob_over, "under": round(1 - prob_over, 4)}
+
+
+# ── Football totals model ─────────────────────────────────────────────────────
+
 def predecir_total_futbol(home: str, away: str, linea: float, deporte: str = "futbol") -> Optional[Dict]:
-    """P(Over/Under linea goals) using Poisson model."""
     league_id, season = _FUTBOL_LEAGUES.get(deporte, (FOOTBALL_LEAGUE, FOOTBALL_SEASON))
     stats_h = get_stats_futbol(home, league_id, season)
     stats_a = get_stats_futbol(away, league_id, season)
+
     if not stats_h or not stats_a:
+        if deporte == "mundial":
+            # Use FIFA ranking-based attack strengths as proxy
+            fifa = _fifa_prob(home, away)
+            if not fifa:
+                return None
+            league_avg = LEAGUE_AVG_GOALS / 2
+            # Stronger team scores more, weaker team scores less
+            lam_h = league_avg * (0.5 + fifa["home"]) * HOME_FACTOR_FUTBOL
+            lam_a = league_avg * (0.5 + fifa["away"])
+            prob_over = 0.0
+            for i in range(15):
+                for j in range(15):
+                    if i + j > linea:
+                        prob_over += _poisson_pmf(i, lam_h) * _poisson_pmf(j, lam_a)
+            return {"over": round(prob_over, 4), "under": round(1 - prob_over, 4)}
         return None
 
     league_avg = LEAGUE_AVG_GOALS / 2
@@ -199,60 +354,12 @@ def predecir_total_futbol(home: str, away: str, linea: float, deporte: str = "fu
     return {"over": round(prob_over, 4), "under": round(1 - prob_over, 4)}
 
 
-def predecir_total_basquet(home: str, away: str, linea: float) -> Optional[Dict]:
-    """P(Over/Under linea pts) using ppg/papg from standings + normal dist."""
-    standings = get_standings_basquet()
-    if not standings:
-        return None
-
-    th = _buscar_en_standings(home, standings)
-    ta = _buscar_en_standings(away, standings)
-    if not th or not ta:
-        return None
-
-    # Weight own offense (60%) vs opponent defense (40%) — offense more predictive in NBA
-    exp_home = th["ppg"] * 0.6 + ta["papg"] * 0.4
-    exp_away = ta["ppg"] * 0.6 + th["papg"] * 0.4
-    expected_total = exp_home + exp_away
-
-    prob_over = _normal_prob_over(expected_total, NBA_TOTAL_STD, linea)
-    return {"over": prob_over, "under": round(1 - prob_over, 4)}
-
-
-def predecir_total_mlb(home: str, away: str, linea: float) -> Optional[Dict]:
-    """P(Over/Under linea runs) using real rpg/rapg from API + normal dist."""
-    stats_h = get_stats_mlb(home)
-    stats_a = get_stats_mlb(away)
-
-    if stats_h and stats_a:
-        # Use actual runs scored/allowed per game — weight offense 60% / defense 40%
-        exp_home = stats_h["rpg"] * 0.6 + stats_a["rapg"] * 0.4
-        exp_away = stats_a["rpg"] * 0.6 + stats_h["rapg"] * 0.4
-        expected_total = exp_home + exp_away
-    else:
-        # Fallback to win%-based estimate
-        standings = get_standings_mlb()
-        if not standings:
-            return None
-        th = _buscar_en_standings(home, standings)
-        ta = _buscar_en_standings(away, standings)
-        if not th or not ta:
-            return None
-        expected_total = (4.5 + (th["win_pct"] - 0.5) * 4) + (4.5 + (ta["win_pct"] - 0.5) * 4)
-
-    prob_over = _normal_prob_over(expected_total, MLB_TOTAL_STD, linea)
-    return {"over": prob_over, "under": round(1 - prob_over, 4)}
-
-
 # ── Dispatchers ───────────────────────────────────────────────────────────────
 
 def predecir(home: str, away: str, sport: str) -> Optional[Dict]:
-    """H2H model probabilities. Returns None → fallback to market probs."""
     try:
         if sport in ("futbol", "mundial", "champions"):
             return predecir_futbol(home, away, sport)
-        if sport == "basquet":
-            return predecir_basquet(home, away)
         if sport == "mlb":
             return predecir_mlb(home, away)
     except Exception as e:
@@ -261,12 +368,9 @@ def predecir(home: str, away: str, sport: str) -> Optional[Dict]:
 
 
 def predecir_total(home: str, away: str, sport: str, linea: float) -> Optional[Dict]:
-    """Totals model probabilities. Returns None → fallback to market probs."""
     try:
         if sport in ("futbol", "mundial", "champions"):
             return predecir_total_futbol(home, away, linea, sport)
-        if sport == "basquet":
-            return predecir_total_basquet(home, away, linea)
         if sport == "mlb":
             return predecir_total_mlb(home, away, linea)
     except Exception as e:
