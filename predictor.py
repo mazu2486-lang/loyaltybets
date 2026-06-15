@@ -28,6 +28,7 @@ LEAGUE_AVG_GOALS = 2.65
 HOME_FACTOR_FUTBOL = 1.12
 HOME_EDGE_MLB = 0.025
 MIN_MATCH_SCORE = 0.50
+MUNDIAL_GROUP_STAGE_FACTOR = 0.88  # group stage produces ~12% fewer goals than domestic leagues
 
 # FIFA ranking points (approximate June 2026) — used as fallback when WC stats unavailable
 FIFA_RANKING_POINTS = {
@@ -310,6 +311,20 @@ def predecir_total_mlb(home: str, away: str, linea: float) -> Optional[Dict]:
     park_f = _get_park_factor(home)
     expected_total = (exp_home + exp_away) * park_f
 
+    # Weather factor (wind direction + temperature at the ballpark)
+    try:
+        from mlb_weather import get_weather_factor
+        expected_total *= get_weather_factor(home)
+    except Exception as e:
+        print(f"[predictor] weather: {e}")
+
+    # Umpire factor (home plate umpire O/U historical tendency)
+    try:
+        from mlb_stats import get_umpire_factor
+        expected_total *= get_umpire_factor(home, away)
+    except Exception as e:
+        print(f"[predictor] umpire: {e}")
+
     prob_over = _normal_prob_over(expected_total, MLB_TOTAL_STD, linea)
     return {"over": prob_over, "under": round(1 - prob_over, 4)}
 
@@ -328,9 +343,8 @@ def predecir_total_futbol(home: str, away: str, linea: float, deporte: str = "fu
             if not fifa:
                 return None
             league_avg = LEAGUE_AVG_GOALS / 2
-            # Stronger team scores more, weaker team scores less
-            lam_h = league_avg * (0.5 + fifa["home"]) * HOME_FACTOR_FUTBOL
-            lam_a = league_avg * (0.5 + fifa["away"])
+            lam_h = league_avg * (0.5 + fifa["home"]) * HOME_FACTOR_FUTBOL * MUNDIAL_GROUP_STAGE_FACTOR
+            lam_a = league_avg * (0.5 + fifa["away"]) * MUNDIAL_GROUP_STAGE_FACTOR
             prob_over = 0.0
             for i in range(15):
                 for j in range(15):
@@ -344,6 +358,11 @@ def predecir_total_futbol(home: str, away: str, linea: float, deporte: str = "fu
     lam_a = (stats_a["goals_for"] / league_avg) * (stats_h["goals_against"] / league_avg) * league_avg
     lam_h *= get_forma_reciente_futbol(home)
     lam_a *= get_forma_reciente_futbol(away)
+
+    # Group stage correction: teams score ~12% fewer goals than in domestic leagues
+    if deporte == "mundial":
+        lam_h *= MUNDIAL_GROUP_STAGE_FACTOR
+        lam_a *= MUNDIAL_GROUP_STAGE_FACTOR
 
     prob_over = 0.0
     for i in range(15):

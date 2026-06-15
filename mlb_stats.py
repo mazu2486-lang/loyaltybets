@@ -176,3 +176,57 @@ def get_forma_reciente_mlb(team_name: str, fecha: str = None) -> float:
     factor = (0.88 + (wins / total) * 0.24) if total > 0 else 1.0
     _cache_set(cache_key, factor)
     return factor
+
+
+# Umpire historical Over% tendency (public data, ~51% is neutral)
+# Each 1pp above 51% adds ~1.5% to expected run total
+_UMPIRE_OVER_PCT: Dict[str, float] = {
+    "Dan Iassogna": 0.56, "Lance Barrett": 0.56, "Nick Mahrley": 0.55,
+    "Paul Emmel": 0.54, "Jeremie Rehak": 0.54, "Angel Hernandez": 0.54,
+    "Chris Conroy": 0.54, "Mark Wegner": 0.53, "Laz Diaz": 0.53,
+    "Roberto Ortiz": 0.53, "Brennan Miller": 0.53, "Tim Timmons": 0.52,
+    "Vic Carapazza": 0.52, "Mike Muchlinski": 0.52, "James Hoye": 0.52,
+    "Todd Tichenor": 0.52, "John Tumpane": 0.51, "Phil Cuzzi": 0.50,
+    "Joe West": 0.50, "Gary Cederstrom": 0.50, "Sam Holbrook": 0.50,
+    "Ted Barrett": 0.51, "Brian Gorman": 0.51, "Mike Everitt": 0.49,
+    "Mike Winters": 0.49, "Doug Eddings": 0.49, "Ron Kulpa": 0.49,
+    "Alan Porter": 0.48, "Bill Miller": 0.48, "CB Bucknor": 0.48,
+}
+
+
+def get_umpire_factor(home: str, away: str, fecha: str = None) -> float:
+    """Returns a run total multiplier [0.92, 1.08] based on home plate umpire O/U tendency."""
+    if fecha is None:
+        fecha = date_cls.today().isoformat()
+
+    cache_key = f"mlbs_ump_{home.lower()[:10]}_{away.lower()[:10]}_{fecha}"
+    cached = _cache_get(cache_key)
+    if cached is not None:
+        return cached
+
+    data = _get("schedule", {"sportId": 1, "date": fecha, "hydrate": "officials,team"})
+    if not data:
+        _cache_set(cache_key, 1.0)
+        return 1.0
+
+    for de in data.get("dates", []):
+        for game in de.get("games", []):
+            t = game.get("teams", {})
+            h_name = t.get("home", {}).get("team", {}).get("name", "")
+            a_name = t.get("away", {}).get("team", {}).get("name", "")
+            if similitud(h_name, home) < 0.45 or similitud(a_name, away) < 0.45:
+                continue
+
+            for official in game.get("officials", []):
+                if official.get("officialType") == "Home Plate":
+                    name = official.get("official", {}).get("fullName", "")
+                    over_pct = _UMPIRE_OVER_PCT.get(name)
+                    if over_pct is not None:
+                        factor = round(max(0.92, min(1.08, 1.0 + (over_pct - 0.51) * 1.5)), 4)
+                        print(f"[umpire] {name}: {over_pct:.0%} Over → factor={factor}")
+                        _cache_set(cache_key, factor)
+                        return factor
+                    print(f"[umpire] {name}: sin datos históricos")
+
+    _cache_set(cache_key, 1.0)
+    return 1.0

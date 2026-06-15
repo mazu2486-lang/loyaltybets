@@ -14,9 +14,9 @@ CUOTA_MAX = 3.50
 MLB_TOTAL_MAX = 9.5  # ignore MLB totals above this line (too volatile)
 EDGE_MIN = 0.04
 PROB_MIN = 0.54
-PICKS_DIARIOS = 7
-MIN_PICKS = 4
-MAX_PICKS = 7
+PICKS_DIARIOS = 5
+MIN_PICKS = 3
+MAX_PICKS = 5
 EXPOSICION_MAX = 14.0
 
 # Football markets are more efficient — require higher edge threshold
@@ -200,8 +200,9 @@ def generar_picks_diarios() -> List[PickOutput]:
             seleccionados.append(pick)
             exposicion += u
 
+    # Only use fallbacks to guarantee a floor of MIN_PICKS — never pad to PICKS_DIARIOS
     for pick in fallbacks:
-        if len(seleccionados) >= PICKS_DIARIOS:
+        if len(seleccionados) >= MIN_PICKS:
             break
         pick.unidades = 0.5
         pick.semaforo = "🟡"
