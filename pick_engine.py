@@ -169,21 +169,26 @@ def generar_picks_diarios() -> List[PickOutput]:
 
     todos_candidatos.sort(key=lambda p: p.edge, reverse=True)
 
-    # Deduplicate: max 1 H2H + max 1 Total per game so both market types compete
-    vistos: set = set()
+    # Deduplicate: max 1 pick per game (highest edge wins per game)
+    partidos_vistos: set = set()
     candidatos_unicos: List[PickOutput] = []
     for p in todos_candidatos:
         partido = p.equipo if " vs " in p.equipo else p.equipo
-        es_total = "Over" in p.tipo_apuesta or "Under" in p.tipo_apuesta
-        clave = (partido, "total" if es_total else "h2h")
-        if clave not in vistos:
-            vistos.add(clave)
+        if partido not in partidos_vistos:
+            partidos_vistos.add(partido)
             candidatos_unicos.append(p)
     todos_candidatos = candidatos_unicos
 
+    def _edge_valido(p: PickOutput) -> bool:
+        es_total = "Over" in p.tipo_apuesta or "Under" in p.tipo_apuesta
+        # Totals in MLB benefit from our pitcher/weather/umpire model → lower threshold
+        if es_total and p.deporte == "mlb":
+            return p.edge >= 0.055
+        return p.edge >= EDGE_MIN_POR_DEPORTE.get(p.deporte, EDGE_MIN)
+
     validos = [
         p for p in todos_candidatos
-        if p.edge >= EDGE_MIN_POR_DEPORTE.get(p.deporte, EDGE_MIN)
+        if _edge_valido(p)
         and p.prob_modelo >= PROB_MIN_POR_DEPORTE.get(p.deporte, PROB_MIN)
     ]
     fallbacks = [p for p in todos_candidatos if p not in validos]
