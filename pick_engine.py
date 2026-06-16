@@ -207,9 +207,9 @@ def generar_picks_diarios() -> List[PickOutput]:
             seleccionados.append(pick)
             exposicion += u
 
-    # Only use fallbacks to guarantee a floor of MIN_PICKS — never pad to PICKS_DIARIOS
+    # Fill to PICKS_DIARIOS (5) with fallbacks when valid picks are insufficient
     for pick in fallbacks:
-        if len(seleccionados) >= MIN_PICKS:
+        if len(seleccionados) >= PICKS_DIARIOS:
             break
         pick.unidades = 0.5
         pick.semaforo = "🟡"
