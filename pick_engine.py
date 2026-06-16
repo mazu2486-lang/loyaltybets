@@ -79,26 +79,32 @@ def _mejores_picks_evento(evento, deporte) -> List[PickOutput]:
             prob_home = pred["home"]
             prob_away = pred["away"]
             prob_draw = pred.get("draw", 0)
-        else:
+            usar_h2h = True
+        elif deporte != "mlb":
+            # Mundial etc.: market fallback acceptable
             probs = prob_implicita_sin_margen(cuota_hv, cuota_av, cuota_dv)
             prob_home, prob_away = probs["local"], probs["visitante"]
             prob_draw = 0
+            usar_h2h = True
+        else:
+            usar_h2h = False  # MLB requires real model data — no market fallback
 
-        draw_limit = 0.30 if deporte == "mundial" else 0
-        if prob_draw <= draw_limit:
-            p = _make_pick(deporte, liga, partido, f"Gana {home}", cuota_hv, prob_home, bk_h)
-            if p:
-                h2h_candidatos.append(p)
-            p = _make_pick(deporte, liga, partido, f"Gana {away}", cuota_av, prob_away, bk_a)
-            if p:
-                h2h_candidatos.append(p)
+        if usar_h2h:
+            draw_limit = 0.30 if deporte == "mundial" else 0
+            if prob_draw <= draw_limit:
+                p = _make_pick(deporte, liga, partido, f"Gana {home}", cuota_hv, prob_home, bk_h)
+                if p:
+                    h2h_candidatos.append(p)
+                p = _make_pick(deporte, liga, partido, f"Gana {away}", cuota_av, prob_away, bk_a)
+                if p:
+                    h2h_candidatos.append(p)
 
-        # Draw pick — only for football; edge filter handles quality
-        if cuota_d and deporte == "mundial" and prob_draw > 0:
-            cuota_dv, bk_d = cuota_d
-            p = _make_pick(deporte, liga, partido, "Empate", cuota_dv, prob_draw, bk_d)
-            if p:
-                h2h_candidatos.append(p)
+            # Draw pick — only for football; edge filter handles quality
+            if cuota_d and deporte == "mundial" and prob_draw > 0:
+                cuota_dv, bk_d = cuota_d
+                p = _make_pick(deporte, liga, partido, "Empate", cuota_dv, prob_draw, bk_d)
+                if p:
+                    h2h_candidatos.append(p)
 
     if deporte in DEPORTES_CON_TOTALS:
         puntos_vistos = set()
