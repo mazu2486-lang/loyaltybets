@@ -237,15 +237,14 @@ def predecir_futbol(home: str, away: str, deporte: str = "futbol") -> Optional[D
 # ── MLB model ─────────────────────────────────────────────────────────────────
 
 def predecir_mlb(home: str, away: str) -> Optional[Dict]:
-    standings = get_standings_mlb()
+    # Free official MLB API first — preserves API-Sports quota
+    try:
+        from mlb_stats import get_standings_free
+        standings = get_standings_free()
+    except Exception:
+        standings = None
     if not standings:
-        try:
-            from mlb_stats import get_standings_free
-            standings = get_standings_free()
-            if standings:
-                print("[predictor] MLB standings: usando API libre (fallback)")
-        except Exception:
-            pass
+        standings = get_standings_mlb()
     if not standings:
         return None
 
@@ -288,20 +287,30 @@ def _normal_prob_over(expected: float, std: float, linea: float) -> float:
 
 def predecir_total_mlb(home: str, away: str, linea: float) -> Optional[Dict]:
     """P(Over/Under linea runs) using rpg/rapg + pitcher ERA + ballpark factor."""
-    stats_h = get_stats_mlb(home)
-    stats_a = get_stats_mlb(away)
+    # Free official MLB API first
+    try:
+        from mlb_stats import get_stats_mlb_free
+        stats_h = get_stats_mlb_free(home)
+        stats_a = get_stats_mlb_free(away)
+    except Exception:
+        stats_h = stats_a = None
+    # API-Sports fallback if free API didn't include runs data
+    if not stats_h:
+        stats_h = get_stats_mlb(home)
+    if not stats_a:
+        stats_a = get_stats_mlb(away)
 
     if stats_h and stats_a:
         exp_home = stats_h["rpg"] * 0.6 + stats_a["rapg"] * 0.4
         exp_away = stats_a["rpg"] * 0.6 + stats_h["rapg"] * 0.4
     else:
-        standings = get_standings_mlb()
+        try:
+            from mlb_stats import get_standings_free
+            standings = get_standings_free()
+        except Exception:
+            standings = None
         if not standings:
-            try:
-                from mlb_stats import get_standings_free
-                standings = get_standings_free()
-            except Exception:
-                pass
+            standings = get_standings_mlb()
         if not standings:
             return None
         th = _buscar_en_standings(home, standings)

@@ -233,8 +233,8 @@ def get_umpire_factor(home: str, away: str, fecha: str = None) -> float:
 
 
 def get_standings_free() -> Optional[list]:
-    """MLB season standings from free statsapi.mlb.com — no API key required.
-    Returns [{name, win_pct}] compatible with get_standings_mlb() output."""
+    """MLB standings from statsapi.mlb.com — free, no API key.
+    Returns [{name, win_pct, rpg?, rapg?}] — rpg/rapg included when available."""
     cache_key = f"mlbs_stnd_{date_cls.today().isoformat()}"
     cached = _cache_get(cache_key)
     if cached is not None:
@@ -249,13 +249,37 @@ def get_standings_free() -> Optional[list]:
     for record in data.get("records", []):
         for tr in record.get("teamRecords", []):
             name = tr.get("team", {}).get("name", "")
+            if not name:
+                continue
             wins = tr.get("wins", 0)
             losses = tr.get("losses", 0)
             total = wins + losses
             wp = wins / total if total >= 5 else 0.5
-            if name:
-                result.append({"name": name, "win_pct": wp})
+            entry: Dict = {"name": name, "win_pct": wp}
+
+            # MLB standings include runsScored / runsAllowed at teamRecords level
+            gp = tr.get("gamesPlayed") or total
+            rs = tr.get("runsScored")
+            ra = tr.get("runsAllowed")
+            if rs is not None and ra is not None and gp > 0:
+                entry["rpg"] = round(int(rs) / gp, 3)
+                entry["rapg"] = round(int(ra) / gp, 3)
+
+            result.append(entry)
 
     out = result or None
     _cache_set(cache_key, out)
     return out
+
+
+def get_stats_mlb_free(team_name: str) -> Optional[Dict]:
+    """Returns {rpg, rapg} from free MLB standings — no API key required."""
+    standings = get_standings_free()
+    if not standings:
+        return None
+    best = max(standings, key=lambda s: similitud(team_name, s.get("name", "")), default=None)
+    if not best or similitud(team_name, best.get("name", "")) < 0.45:
+        return None
+    if "rpg" in best and "rapg" in best:
+        return {"rpg": best["rpg"], "rapg": best["rapg"]}
+    return None

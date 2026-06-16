@@ -20,8 +20,6 @@ WORLD_CUP_LEAGUE = 1       # FIFA World Cup 2026
 WORLD_CUP_SEASON = 2026
 CHAMPIONS_LEAGUE = 2       # UEFA Champions League
 CHAMPIONS_SEASON = 2025
-BASKETBALL_LEAGUE = 12     # NBA
-BASKETBALL_SEASON = "2025-2026"
 MLB_LEAGUE = 1
 MLB_SEASON = 2026
 
@@ -237,9 +235,10 @@ def get_stats_futbol(team_name: str, league_id: int = FOOTBALL_LEAGUE, season: i
         return None
 
     r = data["response"]
-    # Require at least 3 games to have reliable averages
     played = r.get("fixtures", {}).get("played", {}).get("total") or 0
-    if played < 3:
+    # World Cup: 2 games enough; domestic leagues need 3 for stable averages
+    min_played = 2 if league_id == WORLD_CUP_LEAGUE else 3
+    if played < min_played:
         _cache_set(cache_key, None)
         return None
 
@@ -252,42 +251,6 @@ def get_stats_futbol(team_name: str, league_id: int = FOOTBALL_LEAGUE, season: i
     result = {"goals_for": float(gf), "goals_against": float(ga)}
     _cache_set(cache_key, result)
     return result
-
-
-# ── Basketball (NBA) ──────────────────────────────────────────────────────────
-
-def get_standings_basquet() -> Optional[List[Dict]]:
-    """Returns list of {name, win_pct, ppg, papg} for NBA teams."""
-    cache_key = "basquet_standings"
-    cached = _cache_get(cache_key)
-    if cached is not None:
-        return cached
-
-    data = _get(
-        "https://v1.basketball.api-sports.io", "standings",
-        {"league": BASKETBALL_LEAGUE, "season": BASKETBALL_SEASON},
-    )
-    if not data or not data.get("response"):
-        _cache_set(cache_key, None)
-        return None
-
-    result = []
-    for group in data["response"]:
-        entries = group if isinstance(group, list) else [group]
-        for entry in entries:
-            name = entry.get("team", {}).get("name", "")
-            games = entry.get("games", {})
-            wins = games.get("wins", {}).get("total", 0) or 0
-            losses = games.get("losses", {}).get("total", 0) or 0
-            total = wins + losses
-            wp = wins / total if total > 0 else 0.5
-            pts = entry.get("points", {})
-            ppg = float(pts.get("for", {}).get("average", {}).get("total") or 110)
-            papg = float(pts.get("against", {}).get("average", {}).get("total") or 110)
-            result.append({"name": name, "win_pct": wp, "ppg": ppg, "papg": papg})
-
-    _cache_set(cache_key, result)
-    return result or None
 
 
 # ── MLB ───────────────────────────────────────────────────────────────────────

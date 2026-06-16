@@ -86,45 +86,6 @@ def _resultado_futbol(pick: Dict, fecha: str) -> Optional[str]:
     return None
 
 
-def _resultado_basquet(pick: Dict, fecha: str) -> Optional[str]:
-    cache_key = f"res_bq_{fecha}"
-    games = _cache_get(cache_key)
-    if games is None:
-        data = _get("https://v1.basketball.api-sports.io", "games",
-                    {"league": BASKETBALL_LEAGUE, "date": fecha})
-        games = data.get("response", []) if data else []
-        _cache_set(cache_key, games)
-
-    equipo = pick.get("equipo", "")
-    tipo = pick.get("tipo_apuesta", "")
-
-    for g in games:
-        teams = g.get("teams", {})
-        h_name = teams.get("home", {}).get("name", "")
-        a_name = teams.get("visitors", {}).get("name", "")
-        home_ok = _coincide(h_name, equipo)
-        away_ok = _coincide(a_name, equipo)
-        if not (home_ok or away_ok):
-            continue
-
-        if g.get("status", {}).get("short") != "FT":
-            return None
-
-        scores = g.get("scores", {})
-        sh = scores.get("home", {}).get("total") or 0
-        sa = scores.get("visitors", {}).get("total") or 0
-
-        if "Over" in tipo:
-            linea = float(tipo.split()[1])
-            return "ganado" if (sh + sa) > linea else "perdido"
-        if "Under" in tipo:
-            linea = float(tipo.split()[1])
-            return "ganado" if (sh + sa) < linea else "perdido"
-
-        return "ganado" if (home_ok and sh > sa) or (away_ok and sa > sh) else "perdido"
-
-    return None
-
 
 def _resultado_mlb(pick: Dict, fecha: str) -> Optional[str]:
     cache_key = f"res_mlb_{fecha}"
