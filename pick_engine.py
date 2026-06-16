@@ -80,14 +80,8 @@ def _mejores_picks_evento(evento, deporte) -> List[PickOutput]:
             prob_away = pred["away"]
             prob_draw = pred.get("draw", 0)
             usar_h2h = True
-        elif deporte != "mlb":
-            # Mundial etc.: market fallback acceptable
-            probs = prob_implicita_sin_margen(cuota_hv, cuota_av, cuota_dv)
-            prob_home, prob_away = probs["local"], probs["visitante"]
-            prob_draw = 0
-            usar_h2h = True
         else:
-            usar_h2h = False  # MLB requires real model data — no market fallback
+            usar_h2h = False  # Sin datos reales del modelo, sin pick H2H
 
         if usar_h2h:
             draw_limit = 0.30 if deporte == "mundial" else 0
