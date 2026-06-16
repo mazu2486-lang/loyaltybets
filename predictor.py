@@ -232,6 +232,14 @@ def predecir_futbol(home: str, away: str, deporte: str = "futbol") -> Optional[D
 def predecir_mlb(home: str, away: str) -> Optional[Dict]:
     standings = get_standings_mlb()
     if not standings:
+        try:
+            from mlb_stats import get_standings_free
+            standings = get_standings_free()
+            if standings:
+                print("[predictor] MLB standings: usando API libre (fallback)")
+        except Exception:
+            pass
+    if not standings:
         return None
 
     th = _buscar_en_standings(home, standings)
@@ -281,6 +289,12 @@ def predecir_total_mlb(home: str, away: str, linea: float) -> Optional[Dict]:
         exp_away = stats_a["rpg"] * 0.6 + stats_h["rapg"] * 0.4
     else:
         standings = get_standings_mlb()
+        if not standings:
+            try:
+                from mlb_stats import get_standings_free
+                standings = get_standings_free()
+            except Exception:
+                pass
         if not standings:
             return None
         th = _buscar_en_standings(home, standings)

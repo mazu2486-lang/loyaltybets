@@ -10,8 +10,8 @@ from data_fetcher import (
 from predictor import predecir, predecir_total
 
 CUOTA_MIN = 1.30
-CUOTA_MAX = 3.50
-MLB_TOTAL_MAX = 9.5  # ignore MLB totals above this line (too volatile)
+CUOTA_MAX = 4.00
+MLB_TOTAL_MAX = 10.5  # skip MLB totals above this line
 EDGE_MIN = 0.04
 PROB_MIN = 0.54
 PICKS_DIARIOS = 5

@@ -230,3 +230,32 @@ def get_umpire_factor(home: str, away: str, fecha: str = None) -> float:
 
     _cache_set(cache_key, 1.0)
     return 1.0
+
+
+def get_standings_free() -> Optional[list]:
+    """MLB season standings from free statsapi.mlb.com — no API key required.
+    Returns [{name, win_pct}] compatible with get_standings_mlb() output."""
+    cache_key = f"mlbs_stnd_{date_cls.today().isoformat()}"
+    cached = _cache_get(cache_key)
+    if cached is not None:
+        return cached
+
+    data = _get("standings", {"leagueId": "103,104", "season": 2026, "hydrate": "team"})
+    if not data:
+        _cache_set(cache_key, None)
+        return None
+
+    result = []
+    for record in data.get("records", []):
+        for tr in record.get("teamRecords", []):
+            name = tr.get("team", {}).get("name", "")
+            wins = tr.get("wins", 0)
+            losses = tr.get("losses", 0)
+            total = wins + losses
+            wp = wins / total if total >= 5 else 0.5
+            if name:
+                result.append({"name": name, "win_pct": wp})
+
+    out = result or None
+    _cache_set(cache_key, out)
+    return out
