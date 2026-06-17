@@ -80,8 +80,14 @@ def _mejores_picks_evento(evento, deporte) -> List[PickOutput]:
             prob_away = pred["away"]
             prob_draw = pred.get("draw", 0)
             usar_h2h = True
+        elif deporte == "mlb":
+            usar_h2h = False  # MLB: sin fallback circular — estadísticas reales o nada
         else:
-            usar_h2h = False  # Sin datos reales del modelo, sin pick H2H
+            # Fútbol: mercado 3 vías no puede generar edge verde falso
+            probs = prob_implicita_sin_margen(cuota_hv, cuota_av, cuota_dv)
+            prob_home, prob_away = probs["local"], probs["visitante"]
+            prob_draw = 0
+            usar_h2h = True
 
         if usar_h2h:
             draw_limit = 0.30 if deporte == "mundial" else 0
