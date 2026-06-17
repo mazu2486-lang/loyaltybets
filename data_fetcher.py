@@ -52,7 +52,7 @@ def evento_es_hoy(commence_time_iso: str, hoy_utc: date) -> bool:
     except Exception:
         return False
 
-def evento_tiene_margen(commence_time_iso: str, horas_min: float = 2.0) -> bool:
+def evento_tiene_margen(commence_time_iso: str, horas_min: float = 1.0) -> bool:
     try:
         dt = datetime.fromisoformat(commence_time_iso.replace("Z", "+00:00"))
         ahora = datetime.now(timezone.utc)
@@ -89,7 +89,7 @@ def obtener_cuotas(deporte: str, hoy_utc=None) -> List[Dict]:
         and evento_tiene_margen(e.get("commence_time", ""))
     ]
 
-    print(f"[OddsAPI] {deporte}: {len(todos)} eventos totales, {len(hoy_filtrados)} con margen ≥2h ({hoy_utc})")
+    print(f"[OddsAPI] {deporte}: {len(todos)} eventos totales, {len(hoy_filtrados)} con margen ≥1h ({hoy_utc})")
     return hoy_filtrados
 
 def extraer_mejores_cuotas(evento_odds: Dict) -> Dict:

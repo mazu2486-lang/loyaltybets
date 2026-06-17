@@ -57,18 +57,17 @@ def publicar_picks_diarios(forzar: bool = False):
     combinadas = armar_combinadas(picks, estado)
     stats = get_stats()
 
-    # Post to Telegram only once per day — forzar=true regenerates but doesn't re-post
-    if not ya_enviados:
-        enviar_picks_diarios_canal(picks, combinadas, estado, stats=stats)
-        try:
-            fecha = obtener_fecha_utc_real().isoformat()
-            guardar_picks_dia(picks, fecha)
-        except Exception as e:
-            print(f"[main] Error guardando picks: {e}")
-        marcar_enviados()
+    # forzar=true siempre reenvía a Telegram (reemplaza los picks del día)
+    enviar_picks_diarios_canal(picks, combinadas, estado, stats=stats)
+    try:
+        fecha = obtener_fecha_utc_real().isoformat()
+        guardar_picks_dia(picks, fecha)
+    except Exception as e:
+        print(f"[main] Error guardando picks: {e}")
+    marcar_enviados()
 
     return {
-        "publicado": not ya_enviados,
+        "publicado": True,
         "picks_generados": len(picks),
         "combinadas": [c.dict() for c in combinadas],
         "modo_banca": estado.modo,
