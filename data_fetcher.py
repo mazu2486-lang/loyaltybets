@@ -45,18 +45,14 @@ def obtener_fecha_utc_real() -> date:
 
     raise RuntimeError("No se pudo obtener la fecha UTC real desde ninguna fuente externa.")
 
-def evento_es_hoy(commence_time_iso: str, hoy_utc: date) -> bool:
-    try:
-        dt = datetime.fromisoformat(commence_time_iso.replace("Z", "+00:00"))
-        return dt.date() == hoy_utc
-    except Exception:
-        return False
-
-def evento_tiene_margen(commence_time_iso: str, horas_min: float = 1.0) -> bool:
+def evento_en_ventana(commence_time_iso: str, horas_min: float = 1.0, horas_max: float = 20.0) -> bool:
+    """Incluye eventos que empiezan entre horas_min y horas_max desde ahora.
+    Cubre partidos nocturnos en América que son 'mañana' en UTC."""
     try:
         dt = datetime.fromisoformat(commence_time_iso.replace("Z", "+00:00"))
         ahora = datetime.now(timezone.utc)
-        return (dt - ahora).total_seconds() >= horas_min * 3600
+        diff_horas = (dt - ahora).total_seconds() / 3600
+        return horas_min <= diff_horas <= horas_max
     except Exception:
         return True
 
@@ -65,8 +61,6 @@ def obtener_cuotas(deporte: str, hoy_utc=None) -> List[Dict]:
     if not sport_key or not ODDS_API_KEY:
         return []
 
-    if hoy_utc is None:
-        hoy_utc = obtener_fecha_utc_real()
     markets = "h2h,totals" if deporte in DEPORTES_CON_TOTALS else "h2h"
 
     url = f"https://api.the-odds-api.com/v4/sports/{sport_key}/odds"
@@ -85,11 +79,10 @@ def obtener_cuotas(deporte: str, hoy_utc=None) -> List[Dict]:
     todos = resp.json()
     hoy_filtrados = [
         e for e in todos
-        if evento_es_hoy(e.get("commence_time", ""), hoy_utc)
-        and evento_tiene_margen(e.get("commence_time", ""))
+        if evento_en_ventana(e.get("commence_time", ""))
     ]
 
-    print(f"[OddsAPI] {deporte}: {len(todos)} eventos totales, {len(hoy_filtrados)} con margen ≥1h ({hoy_utc})")
+    print(f"[OddsAPI] {deporte}: {len(todos)} eventos totales, {len(hoy_filtrados)} en ventana 1-20h")
     return hoy_filtrados
 
 def extraer_mejores_cuotas(evento_odds: Dict) -> Dict:
