@@ -58,6 +58,10 @@ FIFA_RANKING_POINTS = {
     "trinidad and tobago": 1298, "trinidad & tobago": 1298,
     "guatemala": 1232, "cuba": 1195,
     "curacao": 1180, "curaçao": 1180,
+    "bosnia": 1388, "bosnia & herzegovina": 1388, "bosnia and herzegovina": 1388,
+    "nigeria": 1492, "kenya": 1185, "zimbabwe": 1148,
+    "new caledonia": 1050, "tahiti": 1020,
+    "haiti": 1210, "bermuda": 980,
 }
 
 # MLB park run factors (home team's park inflates/deflates run totals)
@@ -321,10 +325,13 @@ def predecir_total_mlb(home: str, away: str, linea: float) -> Optional[Dict]:
         exp_away = max(3.5, min(5.5, 4.5 + (ta["win_pct"] - 0.5) * 2))
 
     # Adjust for probable pitchers (pitcher ERA → adjusts runs allowed)
+    # IMPORTANT: if no pitcher data, cap the edge — the market knows today's starters, we don't
+    pitcher_data_disponible = False
     try:
         from mlb_stats import get_probable_pitchers, LEAGUE_ERA
         pitchers = get_probable_pitchers(home, away)
         if pitchers:
+            pitcher_data_disponible = True
             PITCHER_WEIGHT = 0.45  # pitcher influences ~45% of runs allowed
             if pitchers.get("home_era"):
                 # Home pitcher faces away batters → affects exp_away
@@ -356,6 +363,14 @@ def predecir_total_mlb(home: str, away: str, linea: float) -> Optional[Dict]:
         print(f"[predictor] umpire: {e}")
 
     prob_over = _normal_prob_over(expected_total, MLB_TOTAL_STD, linea)
+
+    # Sin datos del lanzador de hoy, el modelo no puede competir con el mercado.
+    # Usamos un STD mayor (incertidumbre más alta) para achatar las probabilidades
+    # y evitar edges inflados que no reflejan la realidad.
+    if not pitcher_data_disponible:
+        prob_over = _normal_prob_over(expected_total, MLB_TOTAL_STD * 1.6, linea)
+        print(f"[predictor] {home} vs {away}: sin pitcher data — STD ajustado a {MLB_TOTAL_STD * 1.6:.1f}")
+
     return {"over": prob_over, "under": round(1 - prob_over, 4)}
 
 
