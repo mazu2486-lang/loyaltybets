@@ -8,6 +8,7 @@ from bankroll import cargar_estado, actualizar_resultado, reset_estado
 from telegram_bot import enviar_picks_canal, enviar_picks_diarios_canal, enviar_resumen_semanal
 from daily_tracker import ya_se_enviaron_hoy, marcar_enviados, resetear
 from picks_tracker import guardar_picks_dia, get_stats
+from data_fetcher import _odds_cache_get, SPORTS_ODDSAPI
 from results_checker import verificar_picks_fecha
 from data_fetcher import obtener_fecha_utc_real
 
@@ -57,18 +58,17 @@ def publicar_picks_diarios(forzar: bool = False):
     combinadas = armar_combinadas(picks, estado)
     stats = get_stats()
 
-    # Post to Telegram only once per day — forzar=true regenerates but doesn't re-post
-    if not ya_enviados:
-        enviar_picks_diarios_canal(picks, combinadas, estado, stats=stats)
-        try:
-            fecha = obtener_fecha_utc_real().isoformat()
-            guardar_picks_dia(picks, fecha)
-        except Exception as e:
-            print(f"[main] Error guardando picks: {e}")
-        marcar_enviados()
+    # forzar=true siempre reenvía a Telegram (reemplaza los picks del día)
+    enviar_picks_diarios_canal(picks, combinadas, estado, stats=stats)
+    try:
+        fecha = obtener_fecha_utc_real().isoformat()
+        guardar_picks_dia(picks, fecha)
+    except Exception as e:
+        print(f"[main] Error guardando picks: {e}")
+    marcar_enviados()
 
     return {
-        "publicado": not ya_enviados,
+        "publicado": True,
         "picks_generados": len(picks),
         "combinadas": [c.dict() for c in combinadas],
         "modo_banca": estado.modo,
@@ -146,6 +146,37 @@ def reset_bankroll():
 def reset_daily():
     resetear()
     return {"reseteado": True}
+
+
+@app.get("/debug/eventos")
+def debug_eventos():
+    """Muestra eventos en caché sin consumir cuota de The Odds API."""
+    resultado = {}
+    from datetime import datetime, timezone
+    ahora = datetime.now(timezone.utc)
+    for deporte, sport_key in SPORTS_ODDSAPI.items():
+        cached = _odds_cache_get(f"odds_{sport_key}")
+        if cached is None:
+            resultado[deporte] = {"estado": "sin caché — se necesita una llamada primero"}
+            continue
+        from data_fetcher import evento_en_ventana
+        vigentes = [e for e in cached if evento_en_ventana(e.get("commence_time", ""))]
+        resultado[deporte] = {
+            "total_en_cache": len(cached),
+            "en_ventana_1_20h": len(vigentes),
+            "partidos": [
+                {
+                    "partido": f"{e['home_team']} vs {e['away_team']}",
+                    "commence_time": e.get("commence_time"),
+                    "horas_desde_ahora": round(
+                        (datetime.fromisoformat(e["commence_time"].replace("Z", "+00:00")) - ahora)
+                        .total_seconds() / 3600, 1
+                    ),
+                }
+                for e in vigentes
+            ],
+        }
+    return resultado
 
 
 @app.post("/resumen/semanal")

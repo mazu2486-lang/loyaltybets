@@ -367,20 +367,7 @@ def predecir_total_futbol(home: str, away: str, linea: float, deporte: str = "fu
     stats_a = get_stats_futbol(away, league_id, season)
 
     if not stats_h or not stats_a:
-        if deporte == "mundial":
-            # Use FIFA ranking-based attack strengths as proxy
-            fifa = _fifa_prob(home, away)
-            if not fifa:
-                return None
-            league_avg = LEAGUE_AVG_GOALS / 2
-            lam_h = league_avg * (0.5 + fifa["home"]) * HOME_FACTOR_FUTBOL * MUNDIAL_GROUP_STAGE_FACTOR
-            lam_a = league_avg * (0.5 + fifa["away"]) * MUNDIAL_GROUP_STAGE_FACTOR
-            prob_over = 0.0
-            for i in range(15):
-                for j in range(15):
-                    if i + j > linea:
-                        prob_over += _poisson_pmf(i, lam_h) * _poisson_pmf(j, lam_a)
-            return {"over": round(prob_over, 4), "under": round(1 - prob_over, 4)}
+        # FIFA ranking tells us who wins, NOT how many goals — no fallback for totals
         return None
 
     league_avg = LEAGUE_AVG_GOALS / 2

@@ -1,7 +1,33 @@
 import os
+import json
+import time
 import requests
 from typing import List, Dict, Optional
 from datetime import datetime, timezone, date
+
+ODDS_CACHE_PATH = os.getenv("ODDS_CACHE_PATH", "/tmp/odds_cache.json")
+ODDS_CACHE_TTL = 1800  # 30 minutos — evita quemar cuota en llamadas repetidas
+
+def _odds_cache_get(key: str):
+    try:
+        data = json.load(open(ODDS_CACHE_PATH))
+        entry = data.get(key)
+        if entry and time.time() - entry["ts"] < ODDS_CACHE_TTL:
+            return entry["val"]
+    except Exception:
+        pass
+    return None
+
+def _odds_cache_set(key: str, val):
+    try:
+        try:
+            data = json.load(open(ODDS_CACHE_PATH))
+        except Exception:
+            data = {}
+        data[key] = {"ts": time.time(), "val": val}
+        json.dump(data, open(ODDS_CACHE_PATH, "w"))
+    except Exception:
+        pass
 
 ODDS_API_KEY = os.getenv("ODDS_API_KEY", "")
 API_SPORTS_KEY = os.getenv("API_SPORTS_KEY", "")
@@ -45,18 +71,14 @@ def obtener_fecha_utc_real() -> date:
 
     raise RuntimeError("No se pudo obtener la fecha UTC real desde ninguna fuente externa.")
 
-def evento_es_hoy(commence_time_iso: str, hoy_utc: date) -> bool:
-    try:
-        dt = datetime.fromisoformat(commence_time_iso.replace("Z", "+00:00"))
-        return dt.date() == hoy_utc
-    except Exception:
-        return False
-
-def evento_tiene_margen(commence_time_iso: str, horas_min: float = 2.0) -> bool:
+def evento_en_ventana(commence_time_iso: str, horas_min: float = 1.0, horas_max: float = 20.0) -> bool:
+    """Incluye eventos que empiezan entre horas_min y horas_max desde ahora.
+    Cubre partidos nocturnos en América que son 'mañana' en UTC."""
     try:
         dt = datetime.fromisoformat(commence_time_iso.replace("Z", "+00:00"))
         ahora = datetime.now(timezone.utc)
-        return (dt - ahora).total_seconds() >= horas_min * 3600
+        diff_horas = (dt - ahora).total_seconds() / 3600
+        return horas_min <= diff_horas <= horas_max
     except Exception:
         return True
 
@@ -65,31 +87,32 @@ def obtener_cuotas(deporte: str, hoy_utc=None) -> List[Dict]:
     if not sport_key or not ODDS_API_KEY:
         return []
 
-    if hoy_utc is None:
-        hoy_utc = obtener_fecha_utc_real()
     markets = "h2h,totals" if deporte in DEPORTES_CON_TOTALS else "h2h"
+    cache_key = f"odds_{sport_key}"
 
-    url = f"https://api.the-odds-api.com/v4/sports/{sport_key}/odds"
-    params = {
-        "apiKey": ODDS_API_KEY,
-        "regions": "eu,us",
-        "markets": markets,
-        "oddsFormat": "decimal",
-        "dateFormat": "iso",
-    }
-    resp = requests.get(url, params=params, timeout=10)
-    if resp.status_code != 200:
-        print(f"[OddsAPI] Error {resp.status_code}: {resp.text[:200]}")
-        return []
+    cached = _odds_cache_get(cache_key)
+    if cached is not None:
+        todos = cached
+        print(f"[OddsAPI] {deporte}: usando caché ({len(todos)} eventos)")
+    else:
+        url = f"https://api.the-odds-api.com/v4/sports/{sport_key}/odds"
+        params = {
+            "apiKey": ODDS_API_KEY,
+            "regions": "eu,us",
+            "markets": markets,
+            "oddsFormat": "decimal",
+            "dateFormat": "iso",
+        }
+        resp = requests.get(url, params=params, timeout=10)
+        if resp.status_code != 200:
+            print(f"[OddsAPI] Error {resp.status_code}: {resp.text[:200]}")
+            return []
+        todos = resp.json()
+        _odds_cache_set(cache_key, todos)
+        print(f"[OddsAPI] {deporte}: {len(todos)} eventos desde API (cuota consumida)")
 
-    todos = resp.json()
-    hoy_filtrados = [
-        e for e in todos
-        if evento_es_hoy(e.get("commence_time", ""), hoy_utc)
-        and evento_tiene_margen(e.get("commence_time", ""))
-    ]
-
-    print(f"[OddsAPI] {deporte}: {len(todos)} eventos totales, {len(hoy_filtrados)} con margen ≥2h ({hoy_utc})")
+    hoy_filtrados = [e for e in todos if evento_en_ventana(e.get("commence_time", ""))]
+    print(f"[OddsAPI] {deporte}: {len(hoy_filtrados)} en ventana 1-20h")
     return hoy_filtrados
 
 def extraer_mejores_cuotas(evento_odds: Dict) -> Dict:

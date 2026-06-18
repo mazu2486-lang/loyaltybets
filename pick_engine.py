@@ -80,14 +80,14 @@ def _mejores_picks_evento(evento, deporte) -> List[PickOutput]:
             prob_away = pred["away"]
             prob_draw = pred.get("draw", 0)
             usar_h2h = True
-        elif deporte != "mlb":
-            # Mundial etc.: market fallback acceptable
+        elif deporte == "mlb":
+            usar_h2h = False  # MLB: sin fallback circular — estadísticas reales o nada
+        else:
+            # Fútbol: mercado 3 vías no puede generar edge verde falso
             probs = prob_implicita_sin_margen(cuota_hv, cuota_av, cuota_dv)
             prob_home, prob_away = probs["local"], probs["visitante"]
             prob_draw = 0
             usar_h2h = True
-        else:
-            usar_h2h = False  # MLB requires real model data — no market fallback
 
         if usar_h2h:
             draw_limit = 0.30 if deporte == "mundial" else 0
@@ -134,11 +134,10 @@ def _mejores_picks_evento(evento, deporte) -> List[PickOutput]:
                 pred_t = predecir_total(home, away, deporte, float(punto))
             except (ValueError, TypeError):
                 pred_t = None
-            if pred_t:
-                prob_over, prob_under = pred_t["over"], pred_t["under"]
-            else:
-                probs_t = prob_implicita_sin_margen(cuota_ov, cuota_uv)
-                prob_over, prob_under = probs_t["local"], probs_t["visitante"]
+            if not pred_t:
+                puntos_vistos.add(punto)
+                continue  # Sin datos reales del modelo, no generar pick de totales
+            prob_over, prob_under = pred_t["over"], pred_t["under"]
 
             p_over = _make_pick(deporte, liga, partido, f"Over {punto}", cuota_ov, prob_over, bk_ov)
             p_under = _make_pick(deporte, liga, partido, f"Under {punto}", cuota_uv, prob_under, bk_uv)
