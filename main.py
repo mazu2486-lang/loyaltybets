@@ -6,7 +6,7 @@ from pick_engine import generar_picks, generar_picks_diarios
 from combinada import armar_combinadas
 from bankroll import cargar_estado, actualizar_resultado, reset_estado
 from telegram_bot import enviar_picks_canal, enviar_picks_diarios_canal, enviar_resumen_semanal
-from daily_tracker import ya_se_enviaron_hoy, marcar_enviados, resetear
+from daily_tracker import ya_se_enviaron_hoy, marcar_enviados, resetear, enviado_hace_poco
 from picks_tracker import guardar_picks_dia, get_stats
 from data_fetcher import _odds_cache_get, SPORTS_ODDSAPI
 from results_checker import verificar_picks_fecha
@@ -53,12 +53,14 @@ def publicar_picks_diarios(forzar: bool = False):
     if not forzar and ya_enviados:
         return {"publicado": False, "razon": "Ya se enviaron los picks de hoy"}
 
+    if enviado_hace_poco():
+        return {"publicado": False, "razon": "Enviado hace menos de 5 minutos — espera antes de volver a llamar"}
+
     estado = cargar_estado()
     picks = generar_picks_diarios()
     combinadas = armar_combinadas(picks, estado)
     stats = get_stats()
 
-    # forzar=true siempre reenvía a Telegram (reemplaza los picks del día)
     enviar_picks_diarios_canal(picks, combinadas, estado, stats=stats)
     try:
         fecha = obtener_fecha_utc_real().isoformat()
@@ -176,6 +178,64 @@ def debug_eventos():
                 for e in vigentes
             ],
         }
+    return resultado
+
+
+@app.get("/debug/picks")
+def debug_picks():
+    """Genera los picks del día con todos los datos del modelo (sin enviar a Telegram)."""
+    from predictor import predecir, predecir_total
+    from data_fetcher import obtener_cuotas, extraer_mejores_cuotas
+
+    resultado = {}
+    for deporte in ["mlb", "mundial"]:
+        try:
+            eventos = obtener_cuotas(deporte)
+        except Exception as e:
+            resultado[deporte] = {"error": str(e)}
+            continue
+
+        picks_deporte = []
+        for evento in eventos:
+            home = evento.get("home_team", "")
+            away = evento.get("away_team", "")
+            mejores = extraer_mejores_cuotas(evento)
+
+            pred_h2h = None
+            try:
+                pred_h2h = predecir(home, away, deporte)
+            except Exception:
+                pass
+
+            totals_debug = []
+            for label, (cuota_t, bk_t) in mejores["totals"].items():
+                if not label.startswith("Over "):
+                    continue
+                punto_str = label.split()[1]
+                try:
+                    punto = float(punto_str)
+                    pred_t = predecir_total(home, away, deporte, punto)
+                    if pred_t:
+                        totals_debug.append({
+                            "linea": punto,
+                            "cuota_over": mejores["totals"].get(f"Over {punto_str}", [None])[0],
+                            "cuota_under": mejores["totals"].get(f"Under {punto_str}", [None])[0],
+                            "prob_over": pred_t["over"],
+                            "prob_under": pred_t["under"],
+                            "edge_over": round(pred_t["over"] - 1 / (mejores["totals"].get(f"Over {punto_str}", [1.9])[0] or 1.9), 4),
+                        })
+                except Exception:
+                    pass
+
+            picks_deporte.append({
+                "partido": f"{home} vs {away}",
+                "commence_time": evento.get("commence_time"),
+                "modelo_h2h": pred_h2h,
+                "totals": totals_debug,
+            })
+
+        resultado[deporte] = picks_deporte
+
     return resultado
 
 

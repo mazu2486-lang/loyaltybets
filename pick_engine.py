@@ -201,31 +201,36 @@ def generar_picks_diarios() -> List[PickOutput]:
     fallbacks = [p for p in todos_candidatos if p not in validos]
 
     seleccionados: List[PickOutput] = []
+    partidos_usados: set = set()
     exposicion = 0.0
 
     for pick in validos:
         if len(seleccionados) >= PICKS_DIARIOS or exposicion >= EXPOSICION_MAX:
             break
+        partido = pick.equipo
+        if partido in partidos_usados:
+            continue  # max 1 pick por partido
         u = calcular_unidades(pick.edge, estado)
         if u > 0 and (exposicion + u) <= EXPOSICION_MAX:
             pick.unidades = u
             seleccionados.append(pick)
+            partidos_usados.add(partido)
             exposicion += u
 
     # Guarantee at least 1 Mundial pick when valid Mundial picks exist
     tiene_mundial = any(p.deporte == "mundial" for p in seleccionados)
     if not tiene_mundial:
-        mejores_mundial = [p for p in validos if p.deporte == "mundial"]
+        mejores_mundial = [p for p in validos if p.deporte == "mundial" and p.equipo not in partidos_usados]
         if not mejores_mundial:
-            mejores_mundial = [p for p in fallbacks if p.deporte == "mundial"]
+            mejores_mundial = [p for p in fallbacks if p.deporte == "mundial" and p.equipo not in partidos_usados]
         if mejores_mundial:
             mejor_mundial = mejores_mundial[0]
             if len(seleccionados) >= PICKS_DIARIOS:
-                # Swap out the weakest MLB pick
                 mlb_picks = [p for p in seleccionados if p.deporte == "mlb"]
                 if mlb_picks:
                     peor_mlb = min(mlb_picks, key=lambda p: p.edge)
                     seleccionados.remove(peor_mlb)
+                    partidos_usados.discard(peor_mlb.equipo)
                     exposicion -= peor_mlb.unidades
             if len(seleccionados) < PICKS_DIARIOS:
                 u = calcular_unidades(mejor_mundial.edge, estado)
@@ -233,17 +238,19 @@ def generar_picks_diarios() -> List[PickOutput]:
                 if mejor_mundial.edge < EDGE_MIN_POR_DEPORTE.get("mundial", EDGE_MIN):
                     mejor_mundial.semaforo = "🟡"
                 seleccionados.append(mejor_mundial)
+                partidos_usados.add(mejor_mundial.equipo)
                 exposicion += mejor_mundial.unidades
 
-    # Fill remaining slots with fallbacks
+    # Fill remaining slots with fallbacks (1 per game)
     for pick in fallbacks:
         if len(seleccionados) >= PICKS_DIARIOS:
             break
-        if pick in seleccionados:
+        if pick in seleccionados or pick.equipo in partidos_usados:
             continue
         pick.unidades = 0.5
         pick.semaforo = "🟡"
         seleccionados.append(pick)
+        partidos_usados.add(pick.equipo)
 
     return seleccionados
 
