@@ -334,12 +334,12 @@ def predecir_total_mlb(home: str, away: str, linea: float) -> Optional[Dict]:
             pitcher_data_disponible = True
             PITCHER_WEIGHT = 0.45  # pitcher influences ~45% of runs allowed
             if pitchers.get("home_era"):
-                # Home pitcher faces away batters → affects exp_away
-                era_factor = LEAGUE_ERA / pitchers["home_era"]
+                # Good home pitcher (low ERA) → less scoring by away team → factor < 1
+                era_factor = pitchers["home_era"] / LEAGUE_ERA
                 exp_away = exp_away * (PITCHER_WEIGHT * era_factor + (1 - PITCHER_WEIGHT))
             if pitchers.get("away_era"):
-                # Away pitcher faces home batters → affects exp_home
-                era_factor = LEAGUE_ERA / pitchers["away_era"]
+                # Good away pitcher (low ERA) → less scoring by home team → factor < 1
+                era_factor = pitchers["away_era"] / LEAGUE_ERA
                 exp_home = exp_home * (PITCHER_WEIGHT * era_factor + (1 - PITCHER_WEIGHT))
     except Exception as e:
         print(f"[predictor] pitcher adjustment: {e}")
