@@ -277,7 +277,7 @@ def predecir_mlb(home: str, away: str) -> Optional[Dict]:
     }
 
 
-MLB_TOTAL_STD = 4.5
+MLB_TOTAL_STD = 3.2
 
 
 def _normal_prob_over(expected: float, std: float, linea: float) -> float:
@@ -317,8 +317,8 @@ def predecir_total_mlb(home: str, away: str, linea: float) -> Optional[Dict]:
         ta = _buscar_en_standings(away, standings)
         if not th or not ta:
             return None
-        exp_home = 4.5 + (th["win_pct"] - 0.5) * 4
-        exp_away = 4.5 + (ta["win_pct"] - 0.5) * 4
+        exp_home = max(3.5, min(5.5, 4.5 + (th["win_pct"] - 0.5) * 2))
+        exp_away = max(3.5, min(5.5, 4.5 + (ta["win_pct"] - 0.5) * 2))
 
     # Adjust for probable pitchers (pitcher ERA → adjusts runs allowed)
     try:

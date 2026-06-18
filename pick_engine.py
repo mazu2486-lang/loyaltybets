@@ -180,7 +180,7 @@ def generar_picks_diarios() -> List[PickOutput]:
     candidatos_unicos: List[PickOutput] = []
     for p in todos_candidatos:
         partido = p.equipo if " vs " in p.equipo else p.equipo
-        es_total = "Over" in p.tipo_apuesta or "Under" in p.tipo_apuesta or p.tipo_apuesta == "Empate"
+        es_total = "Over" in p.tipo_apuesta or "Under" in p.tipo_apuesta
         clave = (partido, "total" if es_total else "h2h")
         if clave not in vistos:
             vistos.add(clave)
@@ -213,10 +213,35 @@ def generar_picks_diarios() -> List[PickOutput]:
             seleccionados.append(pick)
             exposicion += u
 
-    # Fill to PICKS_DIARIOS (5) with fallbacks when valid picks are insufficient
+    # Guarantee at least 1 Mundial pick when valid Mundial picks exist
+    tiene_mundial = any(p.deporte == "mundial" for p in seleccionados)
+    if not tiene_mundial:
+        mejores_mundial = [p for p in validos if p.deporte == "mundial"]
+        if not mejores_mundial:
+            mejores_mundial = [p for p in fallbacks if p.deporte == "mundial"]
+        if mejores_mundial:
+            mejor_mundial = mejores_mundial[0]
+            if len(seleccionados) >= PICKS_DIARIOS:
+                # Swap out the weakest MLB pick
+                mlb_picks = [p for p in seleccionados if p.deporte == "mlb"]
+                if mlb_picks:
+                    peor_mlb = min(mlb_picks, key=lambda p: p.edge)
+                    seleccionados.remove(peor_mlb)
+                    exposicion -= peor_mlb.unidades
+            if len(seleccionados) < PICKS_DIARIOS:
+                u = calcular_unidades(mejor_mundial.edge, estado)
+                mejor_mundial.unidades = u if u > 0 else 0.5
+                if mejor_mundial.edge < EDGE_MIN_POR_DEPORTE.get("mundial", EDGE_MIN):
+                    mejor_mundial.semaforo = "🟡"
+                seleccionados.append(mejor_mundial)
+                exposicion += mejor_mundial.unidades
+
+    # Fill remaining slots with fallbacks
     for pick in fallbacks:
         if len(seleccionados) >= PICKS_DIARIOS:
             break
+        if pick in seleccionados:
+            continue
         pick.unidades = 0.5
         pick.semaforo = "🟡"
         seleccionados.append(pick)
