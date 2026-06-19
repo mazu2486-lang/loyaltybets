@@ -217,25 +217,21 @@ def generar_picks_diarios() -> List[PickOutput]:
             partidos_usados.add(partido)
             exposicion += u
 
-    # Guarantee at least 1 Mundial pick — only if it has genuine positive edge
+    # Guarantee at least 1 Mundial pick when valid Mundial picks exist
     tiene_mundial = any(p.deporte == "mundial" for p in seleccionados)
     if not tiene_mundial:
-        mejores_mundial = [
-            p for p in validos
-            if p.deporte == "mundial"
-            and p.equipo not in partidos_usados
-            and p.edge > 0  # never force a pick with no real value
-        ]
+        mejores_mundial = [p for p in validos if p.deporte == "mundial" and p.equipo not in partidos_usados]
+        if not mejores_mundial:
+            mejores_mundial = [p for p in fallbacks if p.deporte == "mundial" and p.equipo not in partidos_usados]
         if mejores_mundial:
             mejor_mundial = mejores_mundial[0]
             if len(seleccionados) >= PICKS_DIARIOS:
                 mlb_picks = [p for p in seleccionados if p.deporte == "mlb"]
                 if mlb_picks:
                     peor_mlb = min(mlb_picks, key=lambda p: p.edge)
-                    if mejor_mundial.edge > 0 and peor_mlb.edge < mejor_mundial.edge:
-                        seleccionados.remove(peor_mlb)
-                        partidos_usados.discard(peor_mlb.equipo)
-                        exposicion -= peor_mlb.unidades
+                    seleccionados.remove(peor_mlb)
+                    partidos_usados.discard(peor_mlb.equipo)
+                    exposicion -= peor_mlb.unidades
             if len(seleccionados) < PICKS_DIARIOS:
                 u = calcular_unidades(mejor_mundial.edge, estado)
                 mejor_mundial.unidades = u if u > 0 else 0.5
