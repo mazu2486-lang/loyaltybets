@@ -1,7 +1,5 @@
 import os
-import asyncio
-from telegram import Bot
-from telegram.error import TelegramError
+import requests as _requests
 from models import PickOutput, Combinada, EstadoBanca
 from typing import List
 
@@ -221,21 +219,21 @@ def enviar_resumen_semanal(picks_totales, picks_ganados, unidades, racha):
     enviar_mensaje(formatear_resumen_semanal(picks_totales, picks_ganados, unidades, racha))
 
 
-# ── Async core ────────────────────────────────────────────────────────────────
-
-async def _enviar_async(texto: str):
-    bot = Bot(token=TOKEN)
-    async with bot:
-        await bot.send_message(chat_id=CHAT_ID, text=texto, parse_mode="Markdown")
-
-
 def enviar_mensaje(texto: str) -> bool:
-    try:
-        asyncio.run(_enviar_async(texto))
-        return True
-    except TelegramError as e:
-        print(f"[Telegram] Error: {e}")
+    if not TOKEN or not CHAT_ID:
+        print("[Telegram] TOKEN o CHAT_ID no configurados")
         return False
+    try:
+        url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
+        resp = _requests.post(url, json={
+            "chat_id": CHAT_ID,
+            "text": texto,
+            "parse_mode": "Markdown"
+        }, timeout=15)
+        if resp.status_code != 200:
+            print(f"[Telegram] Error {resp.status_code}: {resp.text[:200]}")
+            return False
+        return True
     except Exception as e:
-        print(f"[Telegram] Error inesperado: {e}")
+        print(f"[Telegram] Error: {e}")
         return False

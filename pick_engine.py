@@ -106,7 +106,8 @@ def _mejores_picks_evento(evento, deporte) -> List[PickOutput]:
                 if p:
                     h2h_candidatos.append(p)
 
-    if deporte in DEPORTES_CON_TOTALS:
+    # MLB totals disabled until pitcher data is reliably available
+    if deporte in DEPORTES_CON_TOTALS and deporte != "mlb":
         puntos_vistos = set()
         for label, (cuota_t, bk_t) in totals.items():
             parts = label.split(" ", 1)
