@@ -62,6 +62,8 @@ FIFA_RANKING_POINTS = {
     "nigeria": 1492, "kenya": 1185, "zimbabwe": 1148,
     "new caledonia": 1050, "tahiti": 1020,
     "haiti": 1210, "bermuda": 980,
+    "sweden": 1530, "norway": 1480, "republic of ireland": 1445, "ireland": 1445,
+    "finland": 1412, "iceland": 1438,
 }
 
 # MLB park run factors (home team's park inflates/deflates run totals)
@@ -281,7 +283,10 @@ def predecir_mlb(home: str, away: str) -> Optional[Dict]:
     }
 
 
-MLB_TOTAL_STD = 3.2
+MLB_TOTAL_STD = 3.0     # Normal distribution std for total runs per game
+LEAGUE_RPG = 4.50       # MLB average runs per team per game
+LEAGUE_BULLPEN_ERA = 3.80  # Bullpen ERA is lower than starter ERA
+STARTER_IP = 5.5        # Average starter innings pitched before bullpen
 
 
 def _normal_prob_over(expected: float, std: float, linea: float) -> float:
@@ -290,23 +295,32 @@ def _normal_prob_over(expected: float, std: float, linea: float) -> float:
 
 
 def predecir_total_mlb(home: str, away: str, linea: float) -> Optional[Dict]:
-    """P(Over/Under linea runs) using rpg/rapg + pitcher ERA + ballpark factor."""
-    # Free official MLB API first
+    """
+    P(Over/Under linea runs) — professional sharp model:
+
+    1. Baseline: team offense × (opposing defense / league avg)  [Dixon-Coles style]
+    2. Pitcher: replace defense component with game-level ERA
+               (starter ~5.5 innings + bullpen ~3.5 innings at league bullpen ERA)
+               Good pitcher (low ERA) → factor < 1 → opposing team scores less
+    3. Park factor, weather, umpire
+    """
     try:
         from mlb_stats import get_stats_mlb_free
         stats_h = get_stats_mlb_free(home)
         stats_a = get_stats_mlb_free(away)
     except Exception:
         stats_h = stats_a = None
-    # API-Sports fallback if free API didn't include runs data
     if not stats_h:
         stats_h = get_stats_mlb(home)
     if not stats_a:
         stats_a = get_stats_mlb(away)
 
     if stats_h and stats_a:
-        exp_home = stats_h["rpg"] * 0.6 + stats_a["rapg"] * 0.4
-        exp_away = stats_a["rpg"] * 0.6 + stats_h["rapg"] * 0.4
+        h_rpg = stats_h["rpg"]
+        a_rpg = stats_a["rpg"]
+        # Base: team offense × (opposing defense quality / league average)
+        exp_home = h_rpg * (stats_a.get("rapg", LEAGUE_RPG) / LEAGUE_RPG)
+        exp_away = a_rpg * (stats_h.get("rapg", LEAGUE_RPG) / LEAGUE_RPG)
     else:
         try:
             from mlb_stats import get_standings_free
@@ -323,54 +337,50 @@ def predecir_total_mlb(home: str, away: str, linea: float) -> Optional[Dict]:
             return None
         exp_home = max(3.5, min(5.5, 4.5 + (th["win_pct"] - 0.5) * 2))
         exp_away = max(3.5, min(5.5, 4.5 + (ta["win_pct"] - 0.5) * 2))
+        stats_h = stats_a = None
 
-    # Adjust for probable pitchers (pitcher ERA → adjusts runs allowed)
-    # IMPORTANT: if no pitcher data, cap the edge — the market knows today's starters, we don't
+    # Pitcher adjustment: game-level ERA = starter ERA × starter innings + bullpen ERA × bullpen innings
+    # A good starting pitcher (low ERA) reduces the opposing team's expected runs.
     pitcher_data_disponible = False
     try:
         from mlb_stats import get_probable_pitchers, LEAGUE_ERA
+        # League average game ERA (starter portion + bullpen portion)
+        LEAGUE_GAME_RA = (LEAGUE_ERA * STARTER_IP + LEAGUE_BULLPEN_ERA * (9.0 - STARTER_IP)) / 9.0
         pitchers = get_probable_pitchers(home, away)
         if pitchers:
             pitcher_data_disponible = True
-            PITCHER_WEIGHT = 0.45  # pitcher influences ~45% of runs allowed
-            if pitchers.get("home_era"):
-                # Home pitcher faces away batters → affects exp_away
-                era_factor = LEAGUE_ERA / pitchers["home_era"]
-                exp_away = exp_away * (PITCHER_WEIGHT * era_factor + (1 - PITCHER_WEIGHT))
-            if pitchers.get("away_era"):
-                # Away pitcher faces home batters → affects exp_home
-                era_factor = LEAGUE_ERA / pitchers["away_era"]
-                exp_home = exp_home * (PITCHER_WEIGHT * era_factor + (1 - PITCHER_WEIGHT))
+            if pitchers.get("home_era") and stats_h is not None:
+                # Home pitcher faces away batters → game-level ERA for today's matchup
+                home_game_ra = (pitchers["home_era"] * STARTER_IP + LEAGUE_BULLPEN_ERA * (9.0 - STARTER_IP)) / 9.0
+                # Replace defense component with today's pitcher projection
+                exp_away = stats_a["rpg"] * (home_game_ra / LEAGUE_GAME_RA)
+            if pitchers.get("away_era") and stats_a is not None:
+                away_game_ra = (pitchers["away_era"] * STARTER_IP + LEAGUE_BULLPEN_ERA * (9.0 - STARTER_IP)) / 9.0
+                exp_home = stats_h["rpg"] * (away_game_ra / LEAGUE_GAME_RA)
     except Exception as e:
         print(f"[predictor] pitcher adjustment: {e}")
 
-    # Park factor (home team's stadium)
     park_f = _get_park_factor(home)
     expected_total = (exp_home + exp_away) * park_f
 
-    # Weather factor (wind direction + temperature at the ballpark)
     try:
         from mlb_weather import get_weather_factor
         expected_total *= get_weather_factor(home)
     except Exception as e:
         print(f"[predictor] weather: {e}")
 
-    # Umpire factor (home plate umpire O/U historical tendency)
     try:
         from mlb_stats import get_umpire_factor
         expected_total *= get_umpire_factor(home, away)
     except Exception as e:
         print(f"[predictor] umpire: {e}")
 
-    prob_over = _normal_prob_over(expected_total, MLB_TOTAL_STD, linea)
-
-    # Sin datos del lanzador de hoy, el modelo no puede competir con el mercado.
-    # Usamos un STD mayor (incertidumbre más alta) para achatar las probabilidades
-    # y evitar edges inflados que no reflejan la realidad.
+    # Without today's pitcher data the model can't compete with the market — widen std
+    std = MLB_TOTAL_STD if pitcher_data_disponible else MLB_TOTAL_STD * 1.6
     if not pitcher_data_disponible:
-        prob_over = _normal_prob_over(expected_total, MLB_TOTAL_STD * 1.6, linea)
-        print(f"[predictor] {home} vs {away}: sin pitcher data — STD ajustado a {MLB_TOTAL_STD * 1.6:.1f}")
+        print(f"[predictor] {home} vs {away}: sin pitcher data — STD={std:.1f}")
 
+    prob_over = _normal_prob_over(expected_total, std, linea)
     return {"over": prob_over, "under": round(1 - prob_over, 4)}
 
 
