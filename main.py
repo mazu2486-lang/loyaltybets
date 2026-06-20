@@ -183,7 +183,7 @@ def debug_eventos():
 
 @app.get("/debug/picks")
 def debug_picks():
-    """Genera los picks del día con todos los datos del modelo (sin enviar a Telegram)."""
+    """Genera los picks del día con datos del modelo y pitchers (sin enviar a Telegram)."""
     from predictor import predecir, predecir_total
     from data_fetcher import obtener_cuotas, extraer_mejores_cuotas
 
@@ -207,6 +207,19 @@ def debug_picks():
             except Exception:
                 pass
 
+            # Pitcher data debug — only for MLB
+            pitcher_info = None
+            if deporte == "mlb":
+                try:
+                    from mlb_stats import get_probable_pitchers
+                    pitchers = get_probable_pitchers(home, away)
+                    if pitchers:
+                        pitcher_info = pitchers
+                    else:
+                        pitcher_info = "no encontrado — Over/Under sin ajuste"
+                except Exception as e:
+                    pitcher_info = f"error: {e}"
+
             totals_debug = []
             for label, (cuota_t, bk_t) in mejores["totals"].items():
                 if not label.startswith("Over "):
@@ -227,12 +240,16 @@ def debug_picks():
                 except Exception:
                     pass
 
-            picks_deporte.append({
+            entry = {
                 "partido": f"{home} vs {away}",
                 "commence_time": evento.get("commence_time"),
                 "modelo_h2h": pred_h2h,
                 "totals": totals_debug,
-            })
+            }
+            if pitcher_info is not None:
+                entry["pitcher_data"] = pitcher_info
+
+            picks_deporte.append(entry)
 
         resultado[deporte] = picks_deporte
 
