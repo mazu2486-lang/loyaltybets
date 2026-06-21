@@ -14,9 +14,9 @@ CUOTA_MAX = 4.00
 MLB_TOTAL_MAX = 10.5  # skip MLB totals above this line
 EDGE_MIN = 0.04
 PROB_MIN = 0.54
-PICKS_DIARIOS = 3
-MIN_PICKS = 2
-MAX_PICKS = 3
+PICKS_DIARIOS = 5
+MIN_PICKS = 3
+MAX_PICKS = 5
 EXPOSICION_MAX = 14.0
 
 # Football markets are more efficient — require higher edge threshold
@@ -90,6 +90,15 @@ def _mejores_picks_evento(evento, deporte) -> List[PickOutput]:
             usar_h2h = True
 
         if usar_h2h:
+            # MLB home underdog: historically ~54% win rate vs ~43-48% implied by odds
+            # Boost is strongest in the +105-+140 range (cuota 2.05-2.40)
+            if deporte == "mlb" and cuota_hv > 2.00:
+                if cuota_hv <= 2.40:   # +105 to +140: sharpest edge zone
+                    prob_home = min(prob_home * 1.05, 0.95)
+                elif cuota_hv <= 2.80:  # +140 to +180: moderate edge
+                    prob_home = min(prob_home * 1.03, 0.95)
+                # Beyond +180 talent gap outweighs home field advantage
+
             draw_limit = 0.30 if deporte == "mundial" else 0
             if prob_draw <= draw_limit:
                 p = _make_pick(deporte, liga, partido, f"Gana {home}", cuota_hv, prob_home, bk_h)
