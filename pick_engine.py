@@ -19,12 +19,12 @@ MIN_PICKS = 3
 MAX_PICKS = 5
 EXPOSICION_MAX = 14.0
 
-# Football markets are more efficient — require higher edge threshold
+# MLB totals disabled → H2H-only, Log5 is well-calibrated → lower bar than before
 EDGE_MIN_POR_DEPORTE = {
-    "mundial": 0.04, "mlb": 0.07,
+    "mundial": 0.04, "mlb": 0.055,
 }
 PROB_MIN_POR_DEPORTE = {
-    "mundial": 0.54, "mlb": 0.58,
+    "mundial": 0.54, "mlb": 0.54,
 }
 
 def asignar_semaforo(edge: float) -> str:
