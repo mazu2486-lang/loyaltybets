@@ -14,17 +14,17 @@ CUOTA_MAX = 4.00
 MLB_TOTAL_MAX = 10.5  # skip MLB totals above this line
 EDGE_MIN = 0.04
 PROB_MIN = 0.54
-PICKS_DIARIOS = 5
-MIN_PICKS = 3
-MAX_PICKS = 5
+PICKS_DIARIOS = 3
+MIN_PICKS = 2
+MAX_PICKS = 3
 EXPOSICION_MAX = 14.0
 
 # Football markets are more efficient — require higher edge threshold
 EDGE_MIN_POR_DEPORTE = {
-    "mundial": 0.06, "mlb": 0.07,
+    "mundial": 0.04, "mlb": 0.07,
 }
 PROB_MIN_POR_DEPORTE = {
-    "mundial": 0.57, "mlb": 0.58,
+    "mundial": 0.54, "mlb": 0.58,
 }
 
 def asignar_semaforo(edge: float) -> str:
@@ -106,7 +106,8 @@ def _mejores_picks_evento(evento, deporte) -> List[PickOutput]:
                 if p:
                     h2h_candidatos.append(p)
 
-    if deporte in DEPORTES_CON_TOTALS:
+    # MLB totals disabled: insufficient data quality to compete with efficient market
+    if deporte in DEPORTES_CON_TOTALS and deporte != "mlb":
         puntos_vistos = set()
         for label, (cuota_t, bk_t) in totals.items():
             parts = label.split(" ", 1)

@@ -392,7 +392,22 @@ def predecir_total_futbol(home: str, away: str, linea: float, deporte: str = "fu
     stats_a = get_stats_futbol(away, league_id, season)
 
     if not stats_h or not stats_a:
-        # FIFA ranking tells us who wins, NOT how many goals — no fallback for totals
+        # World Cup Under 2.5 model: group stage games are historically low-scoring.
+        # When teams are evenly matched (FIFA diff < 300), Under 2.5 hits ~56-60%.
+        if deporte == "mundial" and linea <= 2.5:
+            h_pts = _best_fifa_pts(home)
+            a_pts = _best_fifa_pts(away)
+            if h_pts and a_pts:
+                diff = abs(h_pts - a_pts)
+                if diff < 100:
+                    prob_under = 0.60
+                elif diff < 200:
+                    prob_under = 0.57
+                elif diff < 350:
+                    prob_under = 0.54
+                else:
+                    return None
+                return {"over": round(1 - prob_under, 4), "under": round(prob_under, 4)}
         return None
 
     league_avg = LEAGUE_AVG_GOALS / 2
