@@ -12,6 +12,9 @@ from predictor import predecir, predecir_total
 CUOTA_MIN = 1.30
 CUOTA_MAX = 4.00
 MLB_TOTAL_MAX = 10.5  # skip MLB totals above this line
+# When using the FIFA ranking fallback, reject total picks where the market strongly
+# disagrees (cuota > 2.10 means market implies < 48% chance — too far from our model)
+CUOTA_TOTAL_MUNDIAL_MAX = 2.10
 EDGE_MIN = 0.04
 PROB_MIN = 0.54
 PICKS_DIARIOS = 5
@@ -151,6 +154,13 @@ def _mejores_picks_evento(evento, deporte) -> List[PickOutput]:
 
             p_over = _make_pick(deporte, liga, partido, f"Over {punto}", cuota_ov, prob_over, bk_ov)
             p_under = _make_pick(deporte, liga, partido, f"Under {punto}", cuota_uv, prob_under, bk_uv)
+            # For Mundial, the FIFA fallback model is not reliable enough to bet when
+            # the market strongly prices the opposite direction (cuota > 2.10)
+            if deporte == "mundial":
+                if p_under and cuota_uv > CUOTA_TOTAL_MUNDIAL_MAX:
+                    p_under = None
+                if p_over and cuota_ov > CUOTA_TOTAL_MUNDIAL_MAX:
+                    p_over = None
             if p_over:
                 total_candidatos.append(p_over)
             if p_under:

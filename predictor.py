@@ -266,12 +266,13 @@ def predecir_mlb(home: str, away: str) -> Optional[Dict]:
         from mlb_stats import get_forma_reciente_mlb
         forma_h = get_forma_reciente_mlb(home)
         forma_a = get_forma_reciente_mlb(away)
-        # Convert form factor [0.88, 1.12] back to recent win rate [0, 1]
-        recent_wp_h = (forma_h - 0.88) / 0.24
-        recent_wp_a = (forma_a - 0.88) / 0.24
-        # Blend: 70% season win%, 30% last-10-games win%
-        wp_h = min(wp_h_season * 0.70 + recent_wp_h * 0.30, 0.99)
-        wp_a = wp_a_season * 0.70 + recent_wp_a * 0.30
+        # Convert form factor [0.88, 1.12] to recent win rate, capped to [0.30, 0.70]
+        # so a 10-0 or 0-10 streak doesn't swing probabilities to impossible extremes
+        recent_wp_h = max(0.30, min(0.70, (forma_h - 0.88) / 0.24))
+        recent_wp_a = max(0.30, min(0.70, (forma_a - 0.88) / 0.24))
+        # Blend: 85% season win%, 15% last-10-games win%
+        wp_h = min(wp_h_season * 0.85 + recent_wp_h * 0.15, 0.99)
+        wp_a = wp_a_season * 0.85 + recent_wp_a * 0.15
     except Exception:
         wp_h = wp_h_season
         wp_a = wp_a_season
@@ -392,17 +393,18 @@ def predecir_total_futbol(home: str, away: str, linea: float, deporte: str = "fu
     stats_a = get_stats_futbol(away, league_id, season)
 
     if not stats_h or not stats_a:
-        # World Cup Under 2.5 model: group stage games are historically low-scoring.
-        # When teams are evenly matched (FIFA diff < 300), Under 2.5 hits ~56-60%.
-        if deporte == "mundial" and linea <= 2.5:
+        # World Cup Under 2.5 model: ONLY for the 2.5 line (not 1.5 / 2.0 / 2.25).
+        # Those lines have very different base rates and the FIFA ranking model
+        # doesn't have enough resolution to price them reliably.
+        if deporte == "mundial" and linea == 2.5:
             h_pts = _best_fifa_pts(home)
             a_pts = _best_fifa_pts(away)
             if h_pts and a_pts:
                 diff = abs(h_pts - a_pts)
                 if diff < 100:
-                    prob_under = 0.60
+                    prob_under = 0.58
                 elif diff < 200:
-                    prob_under = 0.57
+                    prob_under = 0.56
                 elif diff < 350:
                     prob_under = 0.54
                 else:
