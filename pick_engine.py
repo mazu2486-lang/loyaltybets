@@ -118,8 +118,9 @@ def _mejores_picks_evento(evento, deporte) -> List[PickOutput]:
                 if p:
                     h2h_candidatos.append(p)
 
-    # MLB totals disabled: insufficient data quality to compete with efficient market
-    if deporte in DEPORTES_CON_TOTALS and deporte != "mlb":
+    # Mundial totals off: FIFA ranking model too weak to beat efficient market.
+    # MLB totals on: ERA-corrected model competes when pitcher data is available.
+    if deporte in DEPORTES_CON_TOTALS and deporte != "mundial":
         puntos_vistos = set()
         for label, (cuota_t, bk_t) in totals.items():
             parts = label.split(" ", 1)
@@ -134,7 +135,6 @@ def _mejores_picks_evento(evento, deporte) -> List[PickOutput]:
             cuota_under = totals.get(under_label)
             if not cuota_over or not cuota_under:
                 continue
-            # Skip MLB totals above the volatile threshold
             try:
                 if deporte == "mlb" and float(punto) > MLB_TOTAL_MAX:
                     puntos_vistos.add(punto)
@@ -149,17 +149,20 @@ def _mejores_picks_evento(evento, deporte) -> List[PickOutput]:
                 pred_t = None
             if not pred_t:
                 puntos_vistos.add(punto)
-                continue  # Sin datos reales del modelo, no generar pick de totales
+                continue
+            # MLB: only generate total picks when we have actual pitcher ERA data
+            if deporte == "mlb" and not pred_t.get("has_pitcher_data", False):
+                puntos_vistos.add(punto)
+                continue
             prob_over, prob_under = pred_t["over"], pred_t["under"]
 
             p_over = _make_pick(deporte, liga, partido, f"Over {punto}", cuota_ov, prob_over, bk_ov)
             p_under = _make_pick(deporte, liga, partido, f"Under {punto}", cuota_uv, prob_under, bk_uv)
-            # For Mundial, the FIFA fallback model is not reliable enough to bet when
-            # the market strongly prices the opposite direction (cuota > 2.10)
-            if deporte == "mundial":
-                if p_under and cuota_uv > CUOTA_TOTAL_MUNDIAL_MAX:
+            # MLB totals: reject if market strongly disagrees (cuota > 2.20 = < 45% implied)
+            if deporte == "mlb":
+                if p_under and cuota_uv > 2.20:
                     p_under = None
-                if p_over and cuota_ov > CUOTA_TOTAL_MUNDIAL_MAX:
+                if p_over and cuota_ov > 2.20:
                     p_over = None
             if p_over:
                 total_candidatos.append(p_over)
@@ -208,9 +211,9 @@ def generar_picks_diarios() -> List[PickOutput]:
 
     def _edge_valido(p: PickOutput) -> bool:
         es_total = "Over" in p.tipo_apuesta or "Under" in p.tipo_apuesta
-        # Totals in MLB benefit from our pitcher/weather/umpire model → lower threshold
+        # MLB totals: require strong edge since model only runs when pitcher data is available
         if es_total and p.deporte == "mlb":
-            return p.edge >= 0.055
+            return p.edge >= 0.08
         return p.edge >= EDGE_MIN_POR_DEPORTE.get(p.deporte, EDGE_MIN)
 
     validos = [
