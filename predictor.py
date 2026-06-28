@@ -382,7 +382,7 @@ def predecir_total_mlb(home: str, away: str, linea: float) -> Optional[Dict]:
         print(f"[predictor] {home} vs {away}: sin pitcher data — STD={std:.1f}")
 
     prob_over = _normal_prob_over(expected_total, std, linea)
-    return {"over": prob_over, "under": round(1 - prob_over, 4)}
+    return {"over": prob_over, "under": round(1 - prob_over, 4), "has_pitcher_data": pitcher_data_disponible}
 
 
 # ── Football totals model ─────────────────────────────────────────────────────

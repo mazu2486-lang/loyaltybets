@@ -43,9 +43,7 @@ def reset_estado() -> EstadoBanca:
     return estado
 
 def calcular_unidades(edge: float, estado: EstadoBanca) -> float:
-    if edge >= 0.11:
-        raw = 3.0
-    elif edge >= 0.07:
+    if edge >= 0.07:
         raw = 2.0
     elif edge >= 0.04:
         raw = 1.0
