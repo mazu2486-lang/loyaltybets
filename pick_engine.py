@@ -111,12 +111,13 @@ def _mejores_picks_evento(evento, deporte) -> List[PickOutput]:
                 if p:
                     h2h_candidatos.append(p)
 
-            # Draw pick — only for football; edge filter handles quality
+            # Draw pick — only when cuota <= 3.40 (implied >= 29%) to avoid lottery bets
             if cuota_d and deporte == "mundial" and prob_draw > 0:
                 cuota_dv, bk_d = cuota_d
-                p = _make_pick(deporte, liga, partido, "Empate", cuota_dv, prob_draw, bk_d)
-                if p:
-                    h2h_candidatos.append(p)
+                if cuota_dv <= 3.40:
+                    p = _make_pick(deporte, liga, partido, "Empate", cuota_dv, prob_draw, bk_d)
+                    if p:
+                        h2h_candidatos.append(p)
 
     # Mundial totals off: FIFA ranking model too weak to beat efficient market.
     # MLB totals on: ERA-corrected model competes when pitcher data is available.
@@ -274,6 +275,13 @@ def generar_picks_diarios() -> List[PickOutput]:
         pick.semaforo = "🟡"
         seleccionados.append(pick)
         partidos_usados.add(pick.equipo)
+
+    # Cap MLB totals at 2 per day — avoid over-concentration in one bet type
+    mlb_totals = [p for p in seleccionados if p.deporte == "mlb" and ("Over" in p.tipo_apuesta or "Under" in p.tipo_apuesta)]
+    if len(mlb_totals) > 2:
+        # Drop weakest edges first
+        for p in sorted(mlb_totals, key=lambda x: x.edge)[:-2]:
+            seleccionados.remove(p)
 
     return seleccionados
 
